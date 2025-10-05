@@ -80,3 +80,13 @@ repos:
       - id: go-mod-tidy
         name: Go mod tidy
         files: ^tests/go\.(mod|sum)$
+
+  # Markdown link checking
+  - repo: https://github.com/tcort/markdown-link-check
+    rev: v3.11.2
+    hooks:
+      - id: markdown-link-check
+        name: Markdown link check
+        description: Check markdown files for dead links
+        args:
+          - --config=.github/markdown-link-check-config.json

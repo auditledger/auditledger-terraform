@@ -180,4 +180,4 @@ az resource list --tag Environment=Test --query "[].id" -o tsv | xargs -I {} az 
 
 - [Terratest Documentation](https://terratest.gruntwork.io/)
 - [Go Testing Best Practices](https://golang.org/doc/code.html#Testing)
-- [Terraform Testing Best Practices](https://www.terraform.io/docs/language/modules/testing-experiment.html)
+- [Terraform Testing Best Practices](https://developer.hashicorp.com/terraform/language/modules)
