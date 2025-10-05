@@ -49,6 +49,10 @@ tests/*.log
 coverage.txt
 coverage.html
 
+# Security scan results
+results.sarif
+*.sarif
+
 # Terratest cache
 .terratest-cache/
 .test-output/
