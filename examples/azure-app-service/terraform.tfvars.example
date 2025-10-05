@@ -1,0 +1,32 @@
+# Azure App Service Example Configuration
+# Copy this file to terraform.tfvars and customize for your deployment
+
+app_name            = "auditledger-app"
+resource_group_name = "auditledger-rg"
+location            = "eastus"
+environment         = "Production"
+organization_id     = "your-org-id"
+
+# Storage account name must be globally unique
+storage_account_name = "auditlogsstorage"
+container_name       = "audit-logs"
+
+# App Service configuration
+app_service_sku = "B1"  # Basic tier, use P1v3 for production
+
+# Retention and lifecycle
+retention_days             = 2555  # 7 years
+transition_to_cool_days    = 90
+transition_to_archive_days = 365
+
+# Network security (set to "Deny" and add specific IPs for production)
+network_default_action = "Allow"
+allowed_ip_ranges      = []
+
+# Tags
+tags = {
+  Environment = "Production"
+  Application = "AuditLedger"
+  ManagedBy   = "Terraform"
+  Compliance  = "SOC2,HIPAA,PCIDSS"
+}
