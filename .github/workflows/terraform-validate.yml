@@ -1,0 +1,107 @@
+name: Terraform Validation
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        module:
+          - modules/auditledger-s3
+          - modules/auditledger-azure-blob
+          - examples/ec2
+          - examples/ecs-fargate
+          - examples/lambda
+          - examples/azure-app-service
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      - name: Terraform Format Check
+        id: fmt
+        run: terraform fmt -check -recursive ${{ matrix.module }}
+        continue-on-error: true
+
+      - name: Terraform Init
+        id: init
+        run: |
+          cd ${{ matrix.module }}
+          terraform init -backend=false
+
+      - name: Terraform Validate
+        id: validate
+        run: |
+          cd ${{ matrix.module }}
+          terraform validate -no-color
+
+      - name: Comment PR (if applicable)
+        if: github.event_name == 'pull_request' && steps.fmt.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '⚠️ Terraform formatting issues detected in `${{ matrix.module }}`. Run `terraform fmt -recursive` to fix.'
+            })
+
+  security-scan:
+    name: Security Scan (tfsec)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          soft_fail: true
+
+  docs-check:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check README exists in modules
+        run: |
+          for module in modules/*/; do
+            if [ ! -f "${module}README.md" ]; then
+              echo "::error::Missing README.md in ${module}"
+              exit 1
+            fi
+          done
+
+      - name: Check examples have README
+        run: |
+          for example in examples/*/; do
+            if [ ! -f "${example}README.md" ]; then
+              echo "::error::Missing README.md in ${example}"
+              exit 1
+            fi
+          done
+
+      - name: Validate markdown links
+        uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          use-quiet-mode: 'yes'
+          config-file: '.github/markdown-link-check-config.json'

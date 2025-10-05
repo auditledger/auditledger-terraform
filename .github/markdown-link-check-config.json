@@ -1,0 +1,51 @@
+{
+  "ignorePatterns": [
+    {
+      "pattern": "^http://localhost"
+    },
+    {
+      "pattern": "^http://127.0.0.1"
+    },
+    {
+      "pattern": "^https://github.com/auditledger/auditledger-dotnet"
+    },
+    {
+      "pattern": "^https://github.com/auditledger/auditledger-terraform/discussions"
+    },
+    {
+      "pattern": "^https://github.com/auditledger/auditledger-terraform/compare/v1.0.0"
+    },
+    {
+      "pattern": "^https://github.com/auditledger/auditledger-terraform/releases/tag/v1.0.0"
+    },
+    {
+      "pattern": "^https://github.com/auditledger/auditledger-terraform/blob/main/CHANGELOG.md"
+    },
+    {
+      "pattern": "^https://github.com/auditledger/auditledger-terraform/settings"
+    },
+    {
+      "pattern": "^\\.\\./"
+    },
+    {
+      "pattern": "^modules/"
+    },
+    {
+      "pattern": "^examples/"
+    },
+    {
+      "pattern": "^tests/"
+    },
+    {
+      "pattern": "^README.md$"
+    },
+    {
+      "pattern": "^CONTRIBUTING.md$"
+    }
+  ],
+  "timeout": "20s",
+  "retryOn429": true,
+  "retryCount": 3,
+  "fallbackRetryDelay": "30s",
+  "aliveStatusCodes": [200, 206]
+}

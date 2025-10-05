@@ -1,0 +1,92 @@
+# Pre-commit hooks for Terraform
+# Install: pip install pre-commit
+# Setup: pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # Terraform formatting and validation
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.83.5
+    hooks:
+      - id: terraform_fmt
+        name: Terraform format
+        description: Rewrites Terraform files to canonical format
+
+      - id: terraform_validate
+        name: Terraform validate
+        description: Validates Terraform configuration files
+        args:
+          - --args=-no-color
+
+      - id: terraform_docs
+        name: Terraform docs
+        description: Generates README.md from terraform-docs
+        args:
+          - --args=--config=.terraform-docs.yml
+
+      - id: terraform_tflint
+        name: TFLint
+        description: Lints Terraform code
+        args:
+          - --args=--config=__GIT_WORKING_DIR__/.tflint.hcl
+
+      - id: terraform_tfsec
+        name: tfsec
+        description: Static analysis of Terraform for security issues
+        args:
+          - --args=--minimum-severity=MEDIUM
+
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        name: Trim trailing whitespace
+        exclude: ^tests/.*\.go$
+
+      - id: end-of-file-fixer
+        name: Fix end of files
+        exclude: ^tests/.*\.go$
+
+      - id: check-yaml
+        name: Check YAML syntax
+
+      - id: check-added-large-files
+        name: Check for large files
+        args: ['--maxkb=500']
+
+      - id: check-merge-conflict
+        name: Check for merge conflicts
+
+      - id: detect-private-key
+        name: Detect private keys
+
+  # Markdown linting
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.37.0
+    hooks:
+      - id: markdownlint
+        name: Markdown lint
+        args: ['--fix', '--disable', 'MD013', 'MD033', 'MD041']
+
+  # Go formatting (for Terratest)
+  - repo: https://github.com/dnephin/pre-commit-golang
+    rev: v0.5.1
+    hooks:
+      - id: go-fmt
+        name: Go format
+        files: ^tests/.*\.go$
+
+      - id: go-mod-tidy
+        name: Go mod tidy
+        files: ^tests/go\.(mod|sum)$
+
+  # Markdown link checking
+  - repo: https://github.com/tcort/markdown-link-check
+    rev: v3.11.2
+    hooks:
+      - id: markdown-link-check
+        name: Markdown link check
+        description: Check markdown files for dead links
+        args:
+          - --config=.github/markdown-link-check-config.json
