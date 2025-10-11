@@ -1,4 +1,4 @@
-# Example: AuditLedger S3 Storage for ECS Fargate Deployment
+# Example: AuditLedger S3 Immutable Storage for ECS Fargate Deployment
 
 terraform {
   required_version = ">= 1.5.0"
@@ -15,27 +15,14 @@ provider "aws" {
   region = var.aws_region
 }
 
-# AuditLedger S3 Bucket with IAM Role for ECS
-module "auditledger_s3" {
-  source = "../../modules/auditledger-s3"
+# Data source to get current AWS account ID
+data "aws_caller_identity" "current" {}
 
-  bucket_name       = "${var.environment}-auditledger-logs"
-  enable_versioning = true
-  enable_mfa_delete = var.environment == "production" ? true : false
+# IAM Role for ECS Task
+resource "aws_iam_role" "auditledger_ecs_task" {
+  name = "${var.environment}-auditledger-ecs-task-role"
 
-  # Use KMS in production
-  kms_key_id = var.environment == "production" ? aws_kms_key.audit_logs[0].id : null
-
-  # Retention based on compliance requirements
-  retention_days             = var.retention_days
-  transition_to_ia_days      = 90
-  transition_to_glacier_days = 365
-
-  # Create IAM role for ECS Task
-  create_iam_role = true
-  iam_role_name   = "${var.environment}-auditledger-ecs-role"
-
-  iam_role_trust_policy = jsonencode({
+  assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
@@ -52,7 +39,6 @@ module "auditledger_s3" {
     Environment = var.environment
     Application = "AuditLedger"
     ManagedBy   = "Terraform"
-    Team        = var.team
   }
 }
 
@@ -98,14 +84,38 @@ resource "aws_kms_key" "audit_logs" {
   }
 }
 
-# Data source to get current AWS account ID
-data "aws_caller_identity" "current" {}
-
 resource "aws_kms_alias" "audit_logs" {
   count = var.environment == "production" ? 1 : 0
 
   name          = "alias/${var.environment}-auditledger"
   target_key_id = aws_kms_key.audit_logs[0].key_id
+}
+
+# AuditLedger S3 Bucket with Immutability Enforcement
+module "auditledger_s3" {
+  source = "../../modules/auditledger-s3"
+
+  bucket_name            = "${var.environment}-auditledger-logs"
+  retention_days         = var.retention_days
+  object_lock_mode       = var.environment == "production" ? "COMPLIANCE" : "GOVERNANCE"
+  auditledger_role_arns  = [aws_iam_role.auditledger_ecs_task.arn]
+  enable_lifecycle_rules = true
+
+  # Use KMS in production
+  kms_key_id = var.environment == "production" ? aws_kms_key.audit_logs[0].id : null
+
+  tags = {
+    Environment = var.environment
+    Application = "AuditLedger"
+    ManagedBy   = "Terraform"
+    Team        = var.team
+  }
+}
+
+# Attach S3 access policy to ECS task role
+resource "aws_iam_role_policy_attachment" "auditledger_s3_access" {
+  role       = aws_iam_role.auditledger_ecs_task.name
+  policy_arn = module.auditledger_s3.iam_policy_arn
 }
 
 # ECS Task Definition (example)
@@ -116,7 +126,7 @@ resource "aws_ecs_task_definition" "auditledger_app" {
   cpu                      = var.task_cpu
   memory                   = var.task_memory
   execution_role_arn       = aws_iam_role.ecs_execution_role.arn
-  task_role_arn            = module.auditledger_s3.iam_role_arn
+  task_role_arn            = aws_iam_role.auditledger_ecs_task.arn
 
   container_definitions = jsonencode([
     {
@@ -130,7 +140,7 @@ resource "aws_ecs_task_definition" "auditledger_app" {
         },
         {
           name  = "AuditLedger__Storage__AwsS3__BucketName"
-          value = module.auditledger_s3.bucket_name
+          value = module.auditledger_s3.bucket_id
         },
         {
           name  = "AuditLedger__Storage__AwsS3__Region"
@@ -183,10 +193,11 @@ resource "aws_iam_role_policy_attachment" "ecs_execution_role_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# CloudWatch Log Group
+# CloudWatch Log Group with KMS encryption
 resource "aws_cloudwatch_log_group" "auditledger" {
   name              = "/ecs/${var.environment}/auditledger"
   retention_in_days = 30
+  kms_key_id        = var.environment == "production" ? aws_kms_key.audit_logs[0].arn : null
 
   tags = {
     Environment = var.environment

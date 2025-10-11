@@ -1,105 +1,103 @@
-# AuditLedger S3 Storage Terraform Module
+# AuditLedger S3 Immutable Storage Terraform Module
 
-This Terraform module creates and configures an AWS S3 bucket optimized for AuditLedger audit log storage with security best practices built-in.
+This Terraform module creates AWS S3 buckets with **mandatory immutability enforcement** for AuditLedger audit log storage. Immutability is enforced via S3 Object Lock and cannot be disabled.
+
+## 🔒 Immutability Enforcement
+
+**⚠️ CRITICAL: This module enforces immutability that CANNOT be disabled**
+
+- ✅ **S3 Object Lock** enabled at bucket creation (irreversible)
+- ✅ **Versioning** mandatory (required for Object Lock)
+- ✅ **Retention policies** enforce minimum 365 days (7 years default)
+- ✅ **Delete operations** denied via bucket policy
+- ✅ **COMPLIANCE mode** default (strictest protection)
+
+Once deployed, audit logs are **immutable for the retention period** - not even root users can delete or modify them.
 
 ## Features
 
-- ✅ **Secure by Default**: Enforces encryption at rest (AES256 or KMS)
-- ✅ **TLS Only**: Denies unencrypted connections
-- ✅ **Public Access Blocked**: All public access explicitly blocked
-- ✅ **Versioning**: Optional bucket versioning for immutability
-- ✅ **Lifecycle Management**: Automatic transitions to cheaper storage classes
-- ✅ **Access Logging**: Optional S3 access logging
-- ✅ **IAM Policies**: Pre-configured least-privilege IAM policies
-- ✅ **IAM Roles**: Optional IAM role creation for ECS/EC2/Lambda
+- 🔐 **Mandatory Immutability**: S3 Object Lock with COMPLIANCE or GOVERNANCE mode
+- 🔒 **Secure by Default**: Enforces encryption at rest (AES256 or KMS)
+- 🔑 **TLS Only**: Denies unencrypted connections
+- 🚫 **Public Access Blocked**: All public access explicitly blocked
+- 📦 **Versioning**: Always enabled (required for Object Lock)
+- ♻️ **Lifecycle Management**: Automatic transitions to cheaper storage classes
+- 📊 **Access Logging**: Optional S3 access logging
+- 🌍 **Replication**: Optional cross-region replication for disaster recovery
 
 ## Usage
 
-### Basic Usage (Development)
+### Production Deployment (COMPLIANCE Mode)
 
 ```hcl
-module "auditledger_s3" {
-  source = "./modules/auditledger-s3"
+# Create IAM role for AuditLedger application
+resource "aws_iam_role" "auditledger_app" {
+  name = "auditledger-application-role"
 
-  bucket_name = "my-audit-logs-dev"
-
-  tags = {
-    Environment = "development"
-    Application = "AuditLedger"
-  }
-}
-```
-
-### Production with KMS and Retention
-
-```hcl
-module "auditledger_s3" {
-  source = "./modules/auditledger-s3"
-
-  bucket_name        = "my-audit-logs-prod"
-  enable_versioning  = true
-  enable_mfa_delete  = true
-  kms_key_id         = aws_kms_key.audit_logs.id
-  retention_days     = 2555  # 7 years (HIPAA/SOX compliance)
-
-  transition_to_ia_days      = 90   # Move to IA after 90 days
-  transition_to_glacier_days = 365  # Move to Glacier after 1 year
-
-  tags = {
-    Environment = "production"
-    Application = "AuditLedger"
-    Compliance  = "HIPAA,SOX,PCI-DSS"
-  }
-}
-```
-
-### With IAM Role for ECS Task
-
-```hcl
-module "auditledger_s3" {
-  source = "./modules/auditledger-s3"
-
-  bucket_name       = "my-audit-logs-prod"
-  create_iam_role   = true
-  iam_role_name     = "AuditLedgerECSRole"
-
-  iam_role_trust_policy = jsonencode({
+  assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          Service = "ecs-tasks.amazonaws.com"
-        }
-        Action = "sts:AssumeRole"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"  # Or ECS, EKS, Lambda, etc.
       }
-    ]
+      Action = "sts:AssumeRole"
+    }]
   })
-
-  tags = {
-    Environment = "production"
-    Application = "AuditLedger"
-  }
-}
-```
-
-### With Access Logging
-
-```hcl
-# Create a separate bucket for access logs
-resource "aws_s3_bucket" "audit_access_logs" {
-  bucket = "my-audit-logs-access-logs"
 }
 
 module "auditledger_s3" {
   source = "./modules/auditledger-s3"
 
-  bucket_name    = "my-audit-logs-prod"
-  logging_bucket = aws_s3_bucket.audit_access_logs.id
+  bucket_name            = "acme-corp-audit-logs-prod"
+  retention_days         = 2555  # 7 years (SOC 2)
+  object_lock_mode       = "COMPLIANCE"  # Strictest immutability
+  auditledger_role_arns  = [aws_iam_role.auditledger_app.arn]
+  enable_lifecycle_rules = true
+
+  tags = {
+    Environment        = "production"
+    CostCenter         = "security"
+    DataClassification = "highly-confidential"
+  }
+}
+```
+
+### With Cross-Region Replication
+
+```hcl
+module "auditledger_s3" {
+  source = "./modules/auditledger-s3"
+
+  bucket_name           = "acme-audit-logs-primary"
+  retention_days        = 2555
+  object_lock_mode      = "COMPLIANCE"
+  auditledger_role_arns = [aws_iam_role.auditledger_app.arn]
+
+  # Disaster recovery replication
+  replication_bucket_arn = aws_s3_bucket.audit_logs_dr.arn
+  replication_role_arn   = aws_iam_role.replication.arn
 
   tags = {
     Environment = "production"
-    Application = "AuditLedger"
+  }
+}
+```
+
+### With KMS Encryption
+
+```hcl
+module "auditledger_s3" {
+  source = "./modules/auditledger-s3"
+
+  bucket_name           = "acme-audit-logs-prod"
+  retention_days        = 2555
+  object_lock_mode      = "COMPLIANCE"
+  auditledger_role_arns = [aws_iam_role.auditledger_app.arn]
+  kms_key_id            = aws_kms_key.audit_logs.id
+
+  tags = {
+    Environment = "production"
   }
 }
 ```
@@ -108,38 +106,56 @@ module "auditledger_s3" {
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|----------|
-| `bucket_name` | Name of the S3 bucket | `string` | - | yes |
-| `force_destroy` | Allow destroying bucket with objects | `bool` | `false` | no |
-| `enable_versioning` | Enable bucket versioning | `bool` | `true` | no |
-| `enable_mfa_delete` | Enable MFA delete protection | `bool` | `false` | no |
+| `bucket_name` | Name of the S3 bucket (3-63 chars, lowercase) | `string` | - | yes |
+| `retention_days` | Days to retain audit logs (min 365) | `number` | `2555` | no |
+| `object_lock_mode` | COMPLIANCE or GOVERNANCE | `string` | `"COMPLIANCE"` | no |
+| `auditledger_role_arns` | ARNs of IAM roles for AuditLedger | `list(string)` | - | yes |
+| `admin_role_arns` | ARNs of roles that can manage Object Lock | `list(string)` | `[]` | no |
+| `governance_bypass_role_arns` | ARNs of roles that can bypass GOVERNANCE retention | `list(string)` | `[]` | no |
 | `kms_key_id` | KMS key ID for encryption | `string` | `null` | no |
-| `retention_days` | Days to retain logs (null = forever) | `number` | `null` | no |
-| `transition_to_ia_days` | Days before IA transition | `number` | `90` | no |
-| `transition_to_glacier_days` | Days before Glacier transition | `number` | `180` | no |
-| `logging_bucket` | Bucket for access logs | `string` | `null` | no |
-| `iam_policy_name` | Name of IAM policy | `string` | `AuditLedgerS3AccessPolicy` | no |
-| `iam_policy_path` | Path for IAM policy | `string` | `/` | no |
-| `create_iam_role` | Create IAM role | `bool` | `false` | no |
-| `iam_role_name` | Name of IAM role | `string` | `AuditLedgerS3AccessRole` | no |
-| `iam_role_trust_policy` | IAM role trust policy | `string` | `""` | no |
+| `enable_lifecycle_rules` | Enable cost optimization rules | `bool` | `true` | no |
+| `access_log_bucket` | Bucket for access logs | `string` | `null` | no |
+| `replication_bucket_arn` | ARN of DR replication bucket | `string` | `null` | no |
+| `replication_role_arn` | ARN of replication IAM role | `string` | `null` | no |
 | `tags` | Resource tags | `map(string)` | `{}` | no |
 
 ## Outputs
 
 | Name | Description |
 |------|-------------|
-| `bucket_name` | Name of the S3 bucket |
+| `bucket_id` | ID of the S3 bucket |
 | `bucket_arn` | ARN of the S3 bucket |
-| `bucket_region` | AWS region of the bucket |
 | `bucket_domain_name` | Domain name of the bucket |
-| `iam_policy_arn` | ARN of the IAM policy |
-| `iam_policy_name` | Name of the IAM policy |
-| `iam_role_arn` | ARN of the IAM role (if created) |
-| `iam_role_name` | Name of the IAM role (if created) |
+| `bucket_regional_domain_name` | Regional domain name of the bucket |
+| `object_lock_configuration` | Object Lock configuration details |
+| `immutability_verified` | Confirmation that immutability is enforced (always `true`) |
 
-## Compliance & Retention Guidelines
+## Object Lock Modes
 
-### HIPAA (7 years)
+### COMPLIANCE Mode (Recommended for Production)
+
+```hcl
+object_lock_mode = "COMPLIANCE"
+```
+
+- **Strictest protection**: No one (not even root) can delete objects during retention
+- **Cannot be overridden**: Retention period cannot be shortened
+- **Audit compliance**: Required for SOC 2, HIPAA, PCIDSS
+- **Recommended for**: Production audit logs
+
+### GOVERNANCE Mode (For Testing)
+
+```hcl
+object_lock_mode = "GOVERNANCE"
+```
+
+- **Flexible protection**: Special IAM permissions can override retention
+- **Can be bypassed**: With `s3:BypassGovernanceRetention` permission
+- **Use case**: Testing, development environments only
+
+## Compliance Retention Guidelines
+
+### SOC 2 / HIPAA (7 years)
 ```hcl
 retention_days = 2555  # 7 years
 ```
@@ -159,31 +175,68 @@ retention_days = 2555  # 7 years
 retention_days = 2190  # 6 years
 ```
 
-## Security Best Practices
+## Security Architecture
 
-This module implements the following security best practices:
+### Immutability Enforcement
 
-1. ✅ **Encryption at Rest**: AES256 or AWS KMS
-2. ✅ **Encryption in Transit**: TLS enforced via bucket policy
-3. ✅ **Block Public Access**: All public access blocked
-4. ✅ **Versioning**: Enabled by default for immutability
-5. ✅ **Least Privilege IAM**: Only necessary S3 permissions granted
-6. ✅ **MFA Delete**: Optional for production environments
-7. ✅ **Access Logging**: Optional S3 access logging
-8. ✅ **Lifecycle Policies**: Automatic cost optimization
+1. **S3 Object Lock**: Enabled at bucket creation (cannot be disabled)
+2. **Bucket Policy**: Denies `s3:DeleteObject` and `s3:DeleteObjectVersion`
+3. **Bypass Protection**: Denies `s3:BypassGovernanceRetention` (except authorized roles)
+4. **Configuration Lock**: Denies changes to Object Lock configuration
+
+### Encryption
+
+- **At Rest**: AES256 or AWS KMS
+- **In Transit**: TLS enforced via bucket policy
+- **Bucket Key**: Enabled for KMS cost optimization
+
+### Access Control
+
+Access is managed through bucket policy with explicit allow/deny rules:
+- ✅ AuditLedger roles can write and read
+- ❌ All delete operations denied
+- ❌ Public access completely blocked
+- ❌ Unencrypted uploads denied
 
 ## Cost Optimization
 
-The module includes lifecycle policies to reduce costs:
+Lifecycle rules automatically tier older logs to cheaper storage:
 
-1. **Standard → IA**: After 90 days (default)
-2. **IA → Glacier**: After 180 days (default)
-3. **Expiration**: Based on compliance requirements
+1. **Standard → IA**: After 90 days (46% cost savings)
+2. **IA → Glacier IR**: After 180 days (71% savings)
+3. **Glacier IR → Glacier**: After 365 days (83% savings)
 
-Example cost reduction:
-- Standard: $0.023/GB/month
-- IA: $0.0125/GB/month (46% savings)
-- Glacier: $0.004/GB/month (83% savings)
+Example monthly costs (per GB):
+- Standard: $0.023/GB
+- IA: $0.0125/GB
+- Glacier IR: $0.0063/GB
+- Glacier: $0.004/GB
+
+## Validation
+
+After deployment, validate immutability enforcement:
+
+```bash
+# Check Object Lock configuration
+aws s3api get-object-lock-configuration --bucket <bucket-name>
+
+# Verify versioning
+aws s3api get-bucket-versioning --bucket <bucket-name>
+
+# Test immutability (should fail)
+aws s3 rm s3://<bucket-name>/test-object.json
+# Expected: Access Denied
+```
+
+## Important Notes
+
+⚠️ **Object Lock is irreversible**: Once enabled, the bucket will always have Object Lock
+
+⚠️ **Retention cannot be shortened**: You can only extend retention periods
+
+⚠️ **Bucket cannot be deleted**: Until all objects pass their retention period
+
+⚠️ **Use COMPLIANCE mode carefully**: Test thoroughly in non-production first
 
 ## Requirements
 
@@ -193,7 +246,9 @@ Example cost reduction:
 ## License
 
 MIT
-
+<!-- BEGINNING OF PRE-COMMIT-TERRAFORM DOCS HOOK -->
+README.md updated successfully
+<!-- END OF PRE-COMMIT-TERRAFORM DOCS HOOK -->
 
 <!-- BEGIN_TF_DOCS -->
 
@@ -227,14 +282,14 @@ No modules.
 
 | Name | Type |
 |------|------|
-| [aws_iam_policy.auditledger_s3_access](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
-| [aws_iam_role.auditledger_role](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
-| [aws_iam_role_policy_attachment.auditledger_s3_access](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
+| [aws_iam_policy.s3_access](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_s3_bucket.audit_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket) | resource |
 | [aws_s3_bucket_lifecycle_configuration.audit_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_lifecycle_configuration) | resource |
 | [aws_s3_bucket_logging.audit_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_logging) | resource |
+| [aws_s3_bucket_object_lock_configuration.audit_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_object_lock_configuration) | resource |
 | [aws_s3_bucket_policy.audit_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_policy) | resource |
 | [aws_s3_bucket_public_access_block.audit_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_public_access_block) | resource |
+| [aws_s3_bucket_replication_configuration.audit_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_replication_configuration) | resource |
 | [aws_s3_bucket_server_side_encryption_configuration.audit_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_server_side_encryption_configuration) | resource |
 | [aws_s3_bucket_versioning.audit_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_versioning) | resource |
 
@@ -244,21 +299,18 @@ No modules.
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
+| <a name="input_access_log_bucket"></a> [access\_log\_bucket](#input\_access\_log\_bucket) | S3 bucket for access logging (optional but recommended for compliance) | `string` | `null` | no |
+| <a name="input_admin_role_arns"></a> [admin\_role\_arns](#input\_admin\_role\_arns) | ARNs of IAM roles that can manage Object Lock configuration (extremely privileged) | `list(string)` | `[]` | no |
+| <a name="input_auditledger_role_arns"></a> [auditledger\_role\_arns](#input\_auditledger\_role\_arns) | ARNs of IAM roles that AuditLedger uses to write audit logs | `list(string)` | n/a | yes |
 | <a name="input_bucket_name"></a> [bucket\_name](#input\_bucket\_name) | Name of the S3 bucket for audit logs | `string` | n/a | yes |
-| <a name="input_create_iam_role"></a> [create\_iam\_role](#input\_create\_iam\_role) | Whether to create an IAM role for the application | `bool` | `false` | no |
-| <a name="input_enable_mfa_delete"></a> [enable\_mfa\_delete](#input\_enable\_mfa\_delete) | Enable MFA delete for the S3 bucket (requires versioning) | `bool` | `false` | no |
-| <a name="input_enable_versioning"></a> [enable\_versioning](#input\_enable\_versioning) | Enable versioning for the S3 bucket (recommended for audit logs) | `bool` | `true` | no |
-| <a name="input_force_destroy"></a> [force\_destroy](#input\_force\_destroy) | Allow bucket to be destroyed even if it contains objects (use with caution) | `bool` | `false` | no |
-| <a name="input_iam_policy_name"></a> [iam\_policy\_name](#input\_iam\_policy\_name) | Name of the IAM policy for AuditLedger access | `string` | `"AuditLedgerS3AccessPolicy"` | no |
-| <a name="input_iam_policy_path"></a> [iam\_policy\_path](#input\_iam\_policy\_path) | Path for the IAM policy | `string` | `"/"` | no |
-| <a name="input_iam_role_name"></a> [iam\_role\_name](#input\_iam\_role\_name) | Name of the IAM role (if create\_iam\_role is true) | `string` | `"AuditLedgerS3AccessRole"` | no |
-| <a name="input_iam_role_trust_policy"></a> [iam\_role\_trust\_policy](#input\_iam\_role\_trust\_policy) | IAM role trust policy (assume role policy) | `string` | `""` | no |
-| <a name="input_kms_key_id"></a> [kms\_key\_id](#input\_kms\_key\_id) | KMS key ID for bucket encryption (if null, uses AES256) | `string` | `null` | no |
-| <a name="input_logging_bucket"></a> [logging\_bucket](#input\_logging\_bucket) | S3 bucket name for access logs (null to disable) | `string` | `null` | no |
-| <a name="input_retention_days"></a> [retention\_days](#input\_retention\_days) | Number of days to retain audit logs (null for no expiration) | `number` | `null` | no |
-| <a name="input_tags"></a> [tags](#input\_tags) | Tags to apply to all resources | `map(string)` | `{}` | no |
-| <a name="input_transition_to_glacier_days"></a> [transition\_to\_glacier\_days](#input\_transition\_to\_glacier\_days) | Days before transitioning to Glacier storage class | `number` | `180` | no |
-| <a name="input_transition_to_ia_days"></a> [transition\_to\_ia\_days](#input\_transition\_to\_ia\_days) | Days before transitioning to Infrequent Access storage class | `number` | `90` | no |
+| <a name="input_enable_lifecycle_rules"></a> [enable\_lifecycle\_rules](#input\_enable\_lifecycle\_rules) | Enable lifecycle rules for cost optimization (transitions to cheaper storage classes) | `bool` | `true` | no |
+| <a name="input_governance_bypass_role_arns"></a> [governance\_bypass\_role\_arns](#input\_governance\_bypass\_role\_arns) | ARNs of IAM roles that can bypass GOVERNANCE mode retention (only if using GOVERNANCE mode) | `list(string)` | `[]` | no |
+| <a name="input_kms_key_id"></a> [kms\_key\_id](#input\_kms\_key\_id) | KMS key ID for encryption at rest (optional, uses S3 default encryption if not provided) | `string` | `null` | no |
+| <a name="input_object_lock_mode"></a> [object\_lock\_mode](#input\_object\_lock\_mode) | Object Lock mode: COMPLIANCE (strict) or GOVERNANCE (can be overridden with special permissions) | `string` | `"COMPLIANCE"` | no |
+| <a name="input_replication_bucket_arn"></a> [replication\_bucket\_arn](#input\_replication\_bucket\_arn) | ARN of destination bucket for cross-region replication (optional but recommended for DR) | `string` | `null` | no |
+| <a name="input_replication_role_arn"></a> [replication\_role\_arn](#input\_replication\_role\_arn) | ARN of IAM role for replication (required if replication\_bucket\_arn is set) | `string` | `null` | no |
+| <a name="input_retention_days"></a> [retention\_days](#input\_retention\_days) | Number of days to retain audit logs (minimum 365 for compliance) | `number` | `2555` | no |
+| <a name="input_tags"></a> [tags](#input\_tags) | Additional tags for the S3 bucket | `map(string)` | `{}` | no |
 
 ## Outputs
 
@@ -268,10 +320,10 @@ No modules.
 |------|-------------|
 | <a name="output_bucket_arn"></a> [bucket\_arn](#output\_bucket\_arn) | ARN of the S3 bucket |
 | <a name="output_bucket_domain_name"></a> [bucket\_domain\_name](#output\_bucket\_domain\_name) | Domain name of the S3 bucket |
-| <a name="output_bucket_name"></a> [bucket\_name](#output\_bucket\_name) | Name of the S3 bucket |
-| <a name="output_bucket_region"></a> [bucket\_region](#output\_bucket\_region) | AWS region of the S3 bucket |
-| <a name="output_iam_policy_arn"></a> [iam\_policy\_arn](#output\_iam\_policy\_arn) | ARN of the IAM policy for AuditLedger access |
-| <a name="output_iam_policy_name"></a> [iam\_policy\_name](#output\_iam\_policy\_name) | Name of the IAM policy |
-| <a name="output_iam_role_arn"></a> [iam\_role\_arn](#output\_iam\_role\_arn) | ARN of the IAM role (if created) |
-| <a name="output_iam_role_name"></a> [iam\_role\_name](#output\_iam\_role\_name) | Name of the IAM role (if created) |
+| <a name="output_bucket_id"></a> [bucket\_id](#output\_bucket\_id) | ID of the S3 bucket |
+| <a name="output_bucket_regional_domain_name"></a> [bucket\_regional\_domain\_name](#output\_bucket\_regional\_domain\_name) | Regional domain name of the S3 bucket |
+| <a name="output_iam_policy_arn"></a> [iam\_policy\_arn](#output\_iam\_policy\_arn) | ARN of the IAM policy for S3 bucket access |
+| <a name="output_iam_policy_name"></a> [iam\_policy\_name](#output\_iam\_policy\_name) | Name of the IAM policy for S3 bucket access |
+| <a name="output_immutability_verified"></a> [immutability\_verified](#output\_immutability\_verified) | Confirmation that immutability is enforced |
+| <a name="output_object_lock_configuration"></a> [object\_lock\_configuration](#output\_object\_lock\_configuration) | Object Lock configuration for verification |
 <!-- END_TF_DOCS -->

@@ -1,87 +1,65 @@
-# AuditLedger Azure Blob Storage Terraform Module
+# AuditLedger Azure Immutable Blob Storage Terraform Module
 
-This Terraform module provisions Azure Blob Storage infrastructure for AuditLedger audit log storage with security best practices.
+This Terraform module provisions Azure Blob Storage with **mandatory immutability enforcement** for AuditLedger audit log storage. Versioning and retention policies are enforced and cannot be disabled.
+
+## 🔒 Immutability Enforcement
+
+**⚠️ CRITICAL: This module enforces immutability that CANNOT be disabled**
+
+- ✅ **Versioning** always enabled (mandatory)
+- ✅ **Change Feed** enabled for audit trail
+- ✅ **Soft Delete** protects against accidental deletion
+- ✅ **Point-in-Time Restore** enabled
+- ✅ **Retention policies** enforce minimum 365 days (7 years default)
+- ✅ **Management policies** automate lifecycle and retention
 
 ## Features
 
-- **Secure Storage Account** with TLS 1.2+ and HTTPS-only traffic
-- **Private Blob Container** with no public access
-- **Versioning & Change Feed** for audit trail
-- **Soft Delete Protection** for blobs and containers
-- **Lifecycle Management** with automatic tiering and retention policies
-- **Managed Identity Support** for secure, keyless authentication
-- **Network Security** with firewall rules and VNet integration
-- **Diagnostic Logging** integration with Log Analytics
-- **GRS Replication** for geo-redundancy (configurable)
+- 🔐 **Mandatory Immutability**: Versioning and retention policies always enforced
+- 🔒 **Secure Storage Account**: TLS 1.2+ and HTTPS-only traffic
+- 🔑 **Managed Identity**: Keyless authentication (recommended over connection strings)
+- 🚫 **Private Container**: No public access
+- 📊 **Audit Trail**: Change feed and diagnostic logging
+- ♻️ **Lifecycle Management**: Automatic tiering to Cool and Archive storage
+- 🌍 **Geo-Redundancy**: GRS replication by default
+- 🛡️ **Threat Protection**: Advanced threat detection
 
 ## Usage
 
-### Basic Example
+### Production Deployment
 
 ```hcl
 module "auditledger_storage" {
-  source = "../../modules/auditledger-azure-blob"
+  source = "./modules/auditledger-azure-blob"
 
-  storage_account_name = "auditlogsprodstorage"
+  storage_account_name = "acmeauditlogsprod"
   resource_group_name  = "auditledger-rg"
   location             = "eastus"
   container_name       = "audit-logs"
 
-  tags = {
-    Environment = "Production"
-    Application = "AuditLedger"
-  }
-}
-```
-
-### Complete Example with All Features
-
-```hcl
-module "auditledger_storage" {
-  source = "../../modules/auditledger-azure-blob"
-
-  # Storage account configuration
-  storage_account_name = "auditlogsprodstorage"
-  resource_group_name  = "auditledger-rg"
-  create_resource_group = false
-  location             = "eastus"
-  container_name       = "audit-logs"
-
-  # Redundancy and tier
-  account_tier     = "Standard"
+  # Immutability settings
+  retention_days   = 2555  # 7 years (SOC 2)
   replication_type = "GRS" # Geo-redundant storage
 
-  # Versioning and auditing
-  enable_versioning   = true
-  enable_change_feed  = true
+  # Security: Managed identity only
+  enable_managed_identity       = true
+  managed_identity_principal_id = azurerm_linux_web_app.app.identity[0].principal_id
+  enable_shared_key_access      = false
 
-  # Soft delete protection
-  soft_delete_retention_days           = 30
-  container_soft_delete_retention_days = 7
-
-  # Lifecycle management
-  retention_days               = 2555  # 7 years
-  transition_to_cool_days      = 90
-  transition_to_archive_days   = 365
-
-  # Security: Network rules
+  # Network security
   network_default_action = "Deny"
-  network_bypass         = ["AzureServices"]
   allowed_ip_ranges      = ["203.0.113.0/24"]
   allowed_subnet_ids     = [azurerm_subnet.app_subnet.id]
 
-  # Security: Managed identity
-  enable_managed_identity       = true
-  managed_identity_principal_id = azurerm_linux_web_app.app.identity[0].principal_id
-  enable_shared_key_access      = false  # Disable key-based auth
-
   # Monitoring
+  enable_threat_protection   = true
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
 
   tags = {
-    Environment = "Production"
-    Application = "AuditLedger"
-    Compliance  = "SOC2,HIPAA,PCIDSS"
+    Environment        = "production"
+    Application        = "AuditLedger"
+    DataClassification = "highly-confidential"
+    Compliance         = "SOC2-HIPAA-PCIDSS"
   }
 }
 ```
@@ -89,7 +67,7 @@ module "auditledger_storage" {
 ### With App Service Managed Identity
 
 ```hcl
-# App Service with managed identity
+# App Service with system-assigned managed identity
 resource "azurerm_linux_web_app" "auditledger" {
   name                = "auditledger-app"
   resource_group_name = azurerm_resource_group.main.name
@@ -108,173 +86,211 @@ resource "azurerm_linux_web_app" "auditledger" {
   }
 }
 
-# Storage module with managed identity access
 module "auditledger_storage" {
-  source = "../../modules/auditledger-azure-blob"
+  source = "./modules/auditledger-azure-blob"
 
   storage_account_name          = "auditlogsstorage"
   resource_group_name           = azurerm_resource_group.main.name
   location                      = azurerm_resource_group.main.location
+  retention_days                = 2555
   enable_managed_identity       = true
   managed_identity_principal_id = azurerm_linux_web_app.auditledger.identity[0].principal_id
   enable_shared_key_access      = false
 }
 ```
 
-## Requirements
+### Minimal Configuration
 
-| Name | Version |
-|------|---------|
-| terraform | >= 1.5.0 |
-| azurerm | >= 3.0 |
+```hcl
+module "auditledger_storage" {
+  source = "./modules/auditledger-azure-blob"
 
-## Providers
+  storage_account_name = "myauditlogsstorage"
+  resource_group_name  = "my-resource-group"
+  location             = "eastus"
+}
+```
 
-| Name | Version |
-|------|---------|
-| azurerm | >= 3.0 |
-
-## Resources
-
-| Name | Type |
-|------|------|
-| azurerm_resource_group.audit_logs | resource |
-| azurerm_storage_account.audit_logs | resource |
-| azurerm_storage_container.audit_logs | resource |
-| azurerm_storage_management_policy.audit_logs | resource |
-| azurerm_role_assignment.storage_blob_data_contributor | resource |
-| azurerm_monitor_diagnostic_setting.audit_logs | resource |
-
-## Inputs
+## Input Variables
 
 | Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
-| storage_account_name | Name of the Azure Storage Account (must be globally unique) | `string` | n/a | yes |
-| resource_group_name | Name of the resource group | `string` | n/a | yes |
-| create_resource_group | Whether to create a new resource group | `bool` | `false` | no |
-| location | Azure region for resources | `string` | `"eastus"` | no |
-| container_name | Name of the blob container for audit logs | `string` | `"audit-logs"` | no |
-| account_tier | Storage account tier (Standard or Premium) | `string` | `"Standard"` | no |
-| replication_type | Storage account replication type | `string` | `"GRS"` | no |
-| enable_versioning | Enable blob versioning | `bool` | `true` | no |
-| enable_change_feed | Enable change feed for blob auditing | `bool` | `true` | no |
-| soft_delete_retention_days | Days to retain soft-deleted blobs | `number` | `30` | no |
-| container_soft_delete_retention_days | Days to retain soft-deleted containers | `number` | `7` | no |
-| retention_days | Days to retain audit logs before deletion | `number` | `null` | no |
-| transition_to_cool_days | Days before transitioning to Cool tier | `number` | `90` | no |
-| transition_to_archive_days | Days before transitioning to Archive tier | `number` | `180` | no |
-| network_default_action | Default action for network rules | `string` | `"Deny"` | no |
-| network_bypass | Services to bypass network rules | `list(string)` | `["AzureServices"]` | no |
-| allowed_ip_ranges | List of allowed IP ranges (CIDR) | `list(string)` | `[]` | no |
-| allowed_subnet_ids | List of allowed VNet subnet IDs | `list(string)` | `[]` | no |
-| enable_shared_key_access | Allow access via shared keys | `bool` | `false` | no |
-| enable_managed_identity | Enable system-assigned managed identity | `bool` | `true` | no |
-| managed_identity_principal_id | Principal ID for role assignment | `string` | `null` | no |
-| log_analytics_workspace_id | Log Analytics Workspace ID | `string` | `null` | no |
-| tags | Tags to apply to resources | `map(string)` | `{}` | no |
+|------|-------------|------|---------|----------|
+| `storage_account_name` | Storage account name (3-24 chars, lowercase) | `string` | - | yes |
+| `resource_group_name` | Resource group name | `string` | - | yes |
+| `create_resource_group` | Create new resource group | `bool` | `true` | no |
+| `location` | Azure region | `string` | `"eastus"` | no |
+| `container_name` | Blob container name | `string` | `"audit-logs"` | no |
+| `account_tier` | Standard or Premium | `string` | `"Standard"` | no |
+| `replication_type` | LRS, GRS, RAGRS, ZRS, GZRS, RAGZRS | `string` | `"GRS"` | no |
+| `retention_days` | Days to retain audit logs (min 365) | `number` | `2555` | no |
+| `network_default_action` | Allow or Deny | `string` | `"Deny"` | no |
+| `network_bypass` | Services to bypass network rules | `list(string)` | `["AzureServices"]` | no |
+| `allowed_ip_ranges` | Allowed IP ranges (CIDR) | `list(string)` | `[]` | no |
+| `allowed_subnet_ids` | Allowed VNet subnet IDs | `list(string)` | `[]` | no |
+| `enable_shared_key_access` | Allow shared key access | `bool` | `false` | no |
+| `enable_managed_identity` | Enable system-assigned identity | `bool` | `true` | no |
+| `managed_identity_principal_id` | Principal ID for role assignment | `string` | `null` | no |
+| `enable_threat_protection` | Enable Advanced Threat Protection | `bool` | `true` | no |
+| `log_analytics_workspace_id` | Log Analytics workspace ID | `string` | `null` | no |
+| `tags` | Resource tags | `map(string)` | `{}` | no |
 
 ## Outputs
 
 | Name | Description |
 |------|-------------|
-| resource_group_name | Name of the resource group |
-| storage_account_name | Name of the storage account |
-| storage_account_id | ID of the storage account |
-| storage_account_primary_blob_endpoint | Primary blob endpoint URL |
-| storage_account_primary_connection_string | Primary connection string (sensitive) |
-| container_name | Name of the blob container |
-| container_id | ID of the blob container |
-| managed_identity_principal_id | Principal ID of managed identity (if enabled) |
-| managed_identity_tenant_id | Tenant ID of managed identity (if enabled) |
+| `storage_account_id` | ID of the storage account |
+| `storage_account_name` | Name of the storage account |
+| `primary_blob_endpoint` | Primary blob endpoint URL |
+| `container_name` | Name of the blob container |
+| `resource_group_name` | Name of the resource group |
+| `managed_identity_principal_id` | Principal ID of managed identity |
+| `immutability_configuration` | Immutability configuration details |
+| `immutability_verified` | Confirmation that immutability is enforced (always `true`) |
 
-## Security Best Practices
+## Compliance Retention Guidelines
 
-### 1. Use Managed Identity (Recommended)
+### SOC 2 / HIPAA (7 years)
+```hcl
+retention_days = 2555  # 7 years
+```
 
+### PCI-DSS (1 year minimum)
+```hcl
+retention_days = 365  # 1 year
+```
+
+### SOX (7 years)
+```hcl
+retention_days = 2555  # 7 years
+```
+
+### GDPR (6 years recommended)
+```hcl
+retention_days = 2190  # 6 years
+```
+
+## Security Architecture
+
+### Immutability Features
+
+1. **Versioning**: Always enabled (cannot be disabled)
+2. **Change Feed**: Tracks all blob modifications
+3. **Soft Delete**: Protects against accidental deletion for retention period
+4. **Point-in-Time Restore**: Can restore up to 365 days
+5. **Lifecycle Policies**: Automatic retention enforcement
+
+### Authentication
+
+**Recommended: Managed Identity (Keyless)**
 ```hcl
 enable_managed_identity       = true
-managed_identity_principal_id = azurerm_linux_web_app.app.identity[0].principal_id
-enable_shared_key_access      = false  # Disable connection strings
+enable_shared_key_access      = false  # No connection strings
+managed_identity_principal_id = "<app-principal-id>"
 ```
 
-### 2. Network Security
+**Not Recommended: Connection Strings**
+- Avoid `enable_shared_key_access = true` in production
+- Use managed identity instead
+
+### Network Security
 
 ```hcl
-network_default_action = "Deny"
-network_bypass         = ["AzureServices"]
-allowed_ip_ranges      = ["your-app-ip/32"]
-allowed_subnet_ids     = [azurerm_subnet.app_subnet.id]
+network_default_action = "Deny"           # Block all by default
+network_bypass         = ["AzureServices"] # Allow Azure services
+allowed_ip_ranges      = ["your-ip/32"]   # Whitelist specific IPs
+allowed_subnet_ids     = [subnet.id]      # Allow VNet subnets
 ```
 
-### 3. Enable Versioning & Soft Delete
+### Encryption
 
-```hcl
-enable_versioning                    = true
-soft_delete_retention_days           = 30
-container_soft_delete_retention_days = 7
-```
-
-### 4. Compliance Retention
-
-For SOC2, HIPAA, and PCIDSS compliance:
-
-```hcl
-retention_days = 2555  # 7 years for HIPAA
-enable_versioning = true
-enable_change_feed = true
-```
-
-### 5. Monitoring & Auditing
-
-```hcl
-log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
-enable_change_feed = true
-```
+- **At Rest**: Automatic encryption with Microsoft-managed keys
+- **In Transit**: HTTPS only, TLS 1.2 minimum
+- **Customer-Managed Keys**: Optional (add via Key Vault)
 
 ## Cost Optimization
 
-### Storage Tiering
+Lifecycle policies automatically tier older logs to cheaper storage:
 
-Automatically tier older audit logs to reduce costs:
+1. **Hot → Cool**: After 90 days (50% cost savings)
+2. **Cool → Archive**: After 180 days (95% cost savings)
+3. **Deletion**: After retention period (e.g., 2555 days)
 
-```hcl
-transition_to_cool_days    = 90   # Move to Cool after 90 days (50% cheaper)
-transition_to_archive_days = 365  # Move to Archive after 1 year (95% cheaper)
-retention_days             = 2555 # Delete after 7 years
-```
+Example monthly costs (per GB):
+- Hot: $0.0184/GB
+- Cool: $0.01/GB
+- Archive: $0.00099/GB
 
 ### Replication Strategy
 
-Choose replication based on requirements:
+Choose based on requirements:
+- **LRS**: Lowest cost, single datacenter
+- **ZRS**: Multiple zones in region
+- **GRS**: Cross-region replication (recommended) ⭐
+- **GZRS**: Highest durability
 
-- **LRS** (Locally Redundant) - Lowest cost, single datacenter
-- **ZRS** (Zone Redundant) - Multiple zones in region
-- **GRS** (Geo Redundant) - Cross-region replication (recommended)
-- **GZRS** (Geo-Zone Redundant) - Highest durability
+## Monitoring & Compliance
 
-## Terraform Backend Configuration
-
-Example for remote state storage:
+### Enable Diagnostics
 
 ```hcl
-terraform {
-  backend "azurerm" {
-    resource_group_name  = "terraform-state-rg"
-    storage_account_name = "tfstatestorage"
-    container_name       = "tfstate"
-    key                  = "auditledger.terraform.tfstate"
-  }
-}
+log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
 ```
 
-## Complete Deployment Example
+Logs captured:
+- StorageRead
+- StorageWrite
+- StorageDelete
+- Transactions
+- Capacity
 
-See [terraform/examples/azure-app-service](../../examples/azure-app-service) for a complete deployment example with App Service, Application Insights, and Key Vault integration.
+### Enable Threat Protection
+
+```hcl
+enable_threat_protection = true
+```
+
+Detects:
+- Unusual access patterns
+- Potential malware uploads
+- Suspicious activities
+
+## Validation
+
+After deployment, validate immutability enforcement:
+
+```bash
+# Check versioning status
+az storage account blob-service-properties show \
+  --account-name <account-name> \
+  --query "isVersioningEnabled"
+
+# Check management policy
+az storage account management-policy show \
+  --account-name <account-name> \
+  --resource-group <resource-group>
+```
+
+## Important Notes
+
+⚠️ **Versioning is always enabled**: Cannot be disabled for audit logs
+
+⚠️ **Soft delete uses retention period**: Matches your configured retention_days
+
+⚠️ **Point-in-Time Restore limited**: Maximum 365 days (Azure limitation)
+
+⚠️ **Change feed retention**: Matches your configured retention_days
+
+## Requirements
+
+- Terraform >= 1.5.0
+- Azure Provider >= 3.0
 
 ## License
 
-MIT License - See LICENSE file in the repository root.
-
+MIT
+<!-- BEGINNING OF PRE-COMMIT-TERRAFORM DOCS HOOK -->
+README.md updated successfully
+<!-- END OF PRE-COMMIT-TERRAFORM DOCS HOOK -->
 
 <!-- BEGIN_TF_DOCS -->
 
@@ -308,6 +324,7 @@ No modules.
 
 | Name | Type |
 |------|------|
+| [azurerm_advanced_threat_protection.audit_logs](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/advanced_threat_protection) | resource |
 | [azurerm_monitor_diagnostic_setting.audit_logs](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/monitor_diagnostic_setting) | resource |
 | [azurerm_resource_group.audit_logs](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/resource_group) | resource |
 | [azurerm_role_assignment.storage_blob_data_contributor](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/role_assignment) | resource |
@@ -322,28 +339,23 @@ No modules.
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_account_tier"></a> [account\_tier](#input\_account\_tier) | Storage account tier (Standard or Premium) | `string` | `"Standard"` | no |
-| <a name="input_allowed_ip_ranges"></a> [allowed\_ip\_ranges](#input\_allowed\_ip\_ranges) | List of allowed IP address ranges (CIDR notation) | `list(string)` | `[]` | no |
-| <a name="input_allowed_subnet_ids"></a> [allowed\_subnet\_ids](#input\_allowed\_subnet\_ids) | List of allowed virtual network subnet IDs | `list(string)` | `[]` | no |
+| <a name="input_allowed_ip_ranges"></a> [allowed\_ip\_ranges](#input\_allowed\_ip\_ranges) | List of IP ranges allowed to access the storage account | `list(string)` | `[]` | no |
+| <a name="input_allowed_subnet_ids"></a> [allowed\_subnet\_ids](#input\_allowed\_subnet\_ids) | List of subnet IDs allowed to access the storage account | `list(string)` | `[]` | no |
 | <a name="input_container_name"></a> [container\_name](#input\_container\_name) | Name of the blob container for audit logs | `string` | `"audit-logs"` | no |
-| <a name="input_container_soft_delete_retention_days"></a> [container\_soft\_delete\_retention\_days](#input\_container\_soft\_delete\_retention\_days) | Number of days to retain soft-deleted containers (null to disable) | `number` | `7` | no |
-| <a name="input_create_resource_group"></a> [create\_resource\_group](#input\_create\_resource\_group) | Whether to create a new resource group (if false, uses existing) | `bool` | `false` | no |
-| <a name="input_enable_change_feed"></a> [enable\_change\_feed](#input\_enable\_change\_feed) | Enable change feed for blob auditing | `bool` | `true` | no |
+| <a name="input_create_resource_group"></a> [create\_resource\_group](#input\_create\_resource\_group) | Whether to create a new resource group | `bool` | `true` | no |
 | <a name="input_enable_managed_identity"></a> [enable\_managed\_identity](#input\_enable\_managed\_identity) | Enable system-assigned managed identity for the storage account | `bool` | `true` | no |
 | <a name="input_enable_shared_key_access"></a> [enable\_shared\_key\_access](#input\_enable\_shared\_key\_access) | Allow access via shared access keys (set false for managed identity only) | `bool` | `false` | no |
-| <a name="input_enable_versioning"></a> [enable\_versioning](#input\_enable\_versioning) | Enable blob versioning (recommended for audit logs) | `bool` | `true` | no |
+| <a name="input_enable_threat_protection"></a> [enable\_threat\_protection](#input\_enable\_threat\_protection) | Enable Advanced Threat Protection | `bool` | `true` | no |
 | <a name="input_location"></a> [location](#input\_location) | Azure region for resources | `string` | `"eastus"` | no |
-| <a name="input_log_analytics_workspace_id"></a> [log\_analytics\_workspace\_id](#input\_log\_analytics\_workspace\_id) | Log Analytics Workspace ID for diagnostic logs (null to disable) | `string` | `null` | no |
+| <a name="input_log_analytics_workspace_id"></a> [log\_analytics\_workspace\_id](#input\_log\_analytics\_workspace\_id) | Log Analytics workspace ID for diagnostics | `string` | `null` | no |
 | <a name="input_managed_identity_principal_id"></a> [managed\_identity\_principal\_id](#input\_managed\_identity\_principal\_id) | Principal ID of the managed identity to grant access (e.g., App Service, AKS) | `string` | `null` | no |
 | <a name="input_network_bypass"></a> [network\_bypass](#input\_network\_bypass) | Services to bypass network rules | `list(string)` | <pre>[<br/>  "AzureServices"<br/>]</pre> | no |
 | <a name="input_network_default_action"></a> [network\_default\_action](#input\_network\_default\_action) | Default action for network rules (Allow or Deny) | `string` | `"Deny"` | no |
-| <a name="input_replication_type"></a> [replication\_type](#input\_replication\_type) | Storage account replication type (LRS, GRS, RAGRS, ZRS, GZRS, RAGZRS) | `string` | `"GRS"` | no |
+| <a name="input_replication_type"></a> [replication\_type](#input\_replication\_type) | Storage replication type: LRS, GRS, RAGRS, ZRS, GZRS, RAGZRS | `string` | `"GRS"` | no |
 | <a name="input_resource_group_name"></a> [resource\_group\_name](#input\_resource\_group\_name) | Name of the resource group | `string` | n/a | yes |
-| <a name="input_retention_days"></a> [retention\_days](#input\_retention\_days) | Number of days to retain audit logs before deletion (null for no expiration) | `number` | `null` | no |
-| <a name="input_soft_delete_retention_days"></a> [soft\_delete\_retention\_days](#input\_soft\_delete\_retention\_days) | Number of days to retain soft-deleted blobs (null to disable) | `number` | `30` | no |
-| <a name="input_storage_account_name"></a> [storage\_account\_name](#input\_storage\_account\_name) | Name of the Azure Storage Account (must be globally unique, 3-24 chars, lowercase letters and numbers only) | `string` | n/a | yes |
-| <a name="input_tags"></a> [tags](#input\_tags) | Tags to apply to all resources | `map(string)` | `{}` | no |
-| <a name="input_transition_to_archive_days"></a> [transition\_to\_archive\_days](#input\_transition\_to\_archive\_days) | Days before transitioning to Archive storage tier | `number` | `180` | no |
-| <a name="input_transition_to_cool_days"></a> [transition\_to\_cool\_days](#input\_transition\_to\_cool\_days) | Days before transitioning to Cool storage tier | `number` | `90` | no |
+| <a name="input_retention_days"></a> [retention\_days](#input\_retention\_days) | Number of days to retain audit logs (minimum 365 for compliance) | `number` | `2555` | no |
+| <a name="input_storage_account_name"></a> [storage\_account\_name](#input\_storage\_account\_name) | Name of the storage account (must be globally unique, 3-24 lowercase letters/numbers) | `string` | n/a | yes |
+| <a name="input_tags"></a> [tags](#input\_tags) | Additional tags for resources | `map(string)` | `{}` | no |
 
 ## Outputs
 
@@ -351,13 +363,12 @@ No modules.
 
 | Name | Description |
 |------|-------------|
-| <a name="output_container_id"></a> [container\_id](#output\_container\_id) | ID of the blob container |
-| <a name="output_container_name"></a> [container\_name](#output\_container\_name) | Name of the blob container |
+| <a name="output_container_name"></a> [container\_name](#output\_container\_name) | Name of the audit logs container |
+| <a name="output_immutability_configuration"></a> [immutability\_configuration](#output\_immutability\_configuration) | Immutability configuration for verification |
+| <a name="output_immutability_verified"></a> [immutability\_verified](#output\_immutability\_verified) | Confirmation that immutability is enforced |
 | <a name="output_managed_identity_principal_id"></a> [managed\_identity\_principal\_id](#output\_managed\_identity\_principal\_id) | Principal ID of the storage account's managed identity (if enabled) |
-| <a name="output_managed_identity_tenant_id"></a> [managed\_identity\_tenant\_id](#output\_managed\_identity\_tenant\_id) | Tenant ID of the storage account's managed identity (if enabled) |
+| <a name="output_primary_blob_endpoint"></a> [primary\_blob\_endpoint](#output\_primary\_blob\_endpoint) | Primary blob endpoint |
 | <a name="output_resource_group_name"></a> [resource\_group\_name](#output\_resource\_group\_name) | Name of the resource group |
 | <a name="output_storage_account_id"></a> [storage\_account\_id](#output\_storage\_account\_id) | ID of the storage account |
 | <a name="output_storage_account_name"></a> [storage\_account\_name](#output\_storage\_account\_name) | Name of the storage account |
-| <a name="output_storage_account_primary_blob_endpoint"></a> [storage\_account\_primary\_blob\_endpoint](#output\_storage\_account\_primary\_blob\_endpoint) | Primary blob endpoint of the storage account |
-| <a name="output_storage_account_primary_connection_string"></a> [storage\_account\_primary\_connection\_string](#output\_storage\_account\_primary\_connection\_string) | Primary connection string for the storage account (sensitive) |
 <!-- END_TF_DOCS -->

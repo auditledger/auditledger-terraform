@@ -9,8 +9,8 @@ header-from: main.tf
 footer-from: ""
 
 recursive:
-  enabled: true
-  path: modules
+  enabled: false
+  path: .
 
 sections:
   hide: []

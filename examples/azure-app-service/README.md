@@ -429,11 +429,9 @@ For issues specific to this deployment, please check:
 | <a name="input_network_default_action"></a> [network\_default\_action](#input\_network\_default\_action) | Default action for network rules (Allow or Deny) | `string` | `"Allow"` | no |
 | <a name="input_organization_id"></a> [organization\_id](#input\_organization\_id) | Organization identifier for audit logs | `string` | n/a | yes |
 | <a name="input_resource_group_name"></a> [resource\_group\_name](#input\_resource\_group\_name) | Name of the resource group | `string` | n/a | yes |
-| <a name="input_retention_days"></a> [retention\_days](#input\_retention\_days) | Number of days to retain audit logs (null for no expiration) | `number` | `2555` | no |
+| <a name="input_retention_days"></a> [retention\_days](#input\_retention\_days) | Number of days to retain audit logs (minimum 365 days for compliance) | `number` | `2555` | no |
 | <a name="input_storage_account_name"></a> [storage\_account\_name](#input\_storage\_account\_name) | Name of the storage account (3-24 chars, lowercase letters and numbers only) | `string` | n/a | yes |
 | <a name="input_tags"></a> [tags](#input\_tags) | Tags to apply to all resources | `map(string)` | <pre>{<br/>  "Application": "AuditLedger",<br/>  "ManagedBy": "Terraform"<br/>}</pre> | no |
-| <a name="input_transition_to_archive_days"></a> [transition\_to\_archive\_days](#input\_transition\_to\_archive\_days) | Days before transitioning to Archive storage tier | `number` | `365` | no |
-| <a name="input_transition_to_cool_days"></a> [transition\_to\_cool\_days](#input\_transition\_to\_cool\_days) | Days before transitioning to Cool storage tier | `number` | `90` | no |
 
 ## Outputs
 
@@ -446,6 +444,10 @@ For issues specific to this deployment, please check:
 | <a name="output_application_insights_connection_string"></a> [application\_insights\_connection\_string](#output\_application\_insights\_connection\_string) | Connection string for Application Insights |
 | <a name="output_application_insights_key"></a> [application\_insights\_key](#output\_application\_insights\_key) | Instrumentation key for Application Insights |
 | <a name="output_container_name"></a> [container\_name](#output\_container\_name) | Name of the blob container |
+| <a name="output_immutability_verified"></a> [immutability\_verified](#output\_immutability\_verified) | Confirmation that immutability is enforced |
 | <a name="output_managed_identity_principal_id"></a> [managed\_identity\_principal\_id](#output\_managed\_identity\_principal\_id) | Principal ID of the App Service managed identity |
 | <a name="output_storage_account_name"></a> [storage\_account\_name](#output\_storage\_account\_name) | Name of the storage account |
 <!-- END_TF_DOCS -->
+<!-- BEGINNING OF PRE-COMMIT-TERRAFORM DOCS HOOK -->
+README.md updated successfully
+<!-- END OF PRE-COMMIT-TERRAFORM DOCS HOOK -->

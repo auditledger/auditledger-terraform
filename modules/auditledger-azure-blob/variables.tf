@@ -1,182 +1,142 @@
-# AuditLedger Azure Blob Storage Module Variables
+# AuditLedger Azure Immutable Blob Storage Module Variables
 
 variable "storage_account_name" {
-  description = "Name of the Azure Storage Account (must be globally unique, 3-24 chars, lowercase letters and numbers only)"
   type        = string
+  description = "Name of the storage account (must be globally unique, 3-24 lowercase letters/numbers)"
 
   validation {
     condition     = can(regex("^[a-z0-9]{3,24}$", var.storage_account_name))
-    error_message = "Storage account name must be 3-24 characters, lowercase letters and numbers only."
+    error_message = "Storage account name must be 3-24 characters, lowercase letters and numbers only"
   }
 }
 
 variable "resource_group_name" {
-  description = "Name of the resource group"
   type        = string
+  description = "Name of the resource group"
 }
 
 variable "create_resource_group" {
-  description = "Whether to create a new resource group (if false, uses existing)"
   type        = bool
-  default     = false
+  description = "Whether to create a new resource group"
+  default     = true
 }
 
 variable "location" {
-  description = "Azure region for resources"
   type        = string
+  description = "Azure region for resources"
   default     = "eastus"
 }
 
 variable "container_name" {
-  description = "Name of the blob container for audit logs"
   type        = string
+  description = "Name of the blob container for audit logs"
   default     = "audit-logs"
 
   validation {
     condition     = can(regex("^[a-z0-9]([a-z0-9-]{1,61}[a-z0-9])?$", var.container_name))
-    error_message = "Container name must be 3-63 characters, lowercase letters, numbers, and hyphens only."
+    error_message = "Container name must be 3-63 characters, lowercase letters, numbers, and hyphens only"
   }
 }
 
 variable "account_tier" {
-  description = "Storage account tier (Standard or Premium)"
   type        = string
+  description = "Storage account tier (Standard or Premium)"
   default     = "Standard"
 
   validation {
     condition     = contains(["Standard", "Premium"], var.account_tier)
-    error_message = "Account tier must be Standard or Premium."
+    error_message = "Account tier must be Standard or Premium"
   }
 }
 
 variable "replication_type" {
-  description = "Storage account replication type (LRS, GRS, RAGRS, ZRS, GZRS, RAGZRS)"
   type        = string
+  description = "Storage replication type: LRS, GRS, RAGRS, ZRS, GZRS, RAGZRS"
   default     = "GRS"
 
   validation {
     condition     = contains(["LRS", "GRS", "RAGRS", "ZRS", "GZRS", "RAGZRS"], var.replication_type)
-    error_message = "Replication type must be one of: LRS, GRS, RAGRS, ZRS, GZRS, RAGZRS."
-  }
-}
-
-variable "enable_versioning" {
-  description = "Enable blob versioning (recommended for audit logs)"
-  type        = bool
-  default     = true
-}
-
-variable "enable_change_feed" {
-  description = "Enable change feed for blob auditing"
-  type        = bool
-  default     = true
-}
-
-variable "soft_delete_retention_days" {
-  description = "Number of days to retain soft-deleted blobs (null to disable)"
-  type        = number
-  default     = 30
-
-  validation {
-    condition     = var.soft_delete_retention_days == null || (var.soft_delete_retention_days >= 1 && var.soft_delete_retention_days <= 365)
-    error_message = "Soft delete retention must be between 1 and 365 days."
-  }
-}
-
-variable "container_soft_delete_retention_days" {
-  description = "Number of days to retain soft-deleted containers (null to disable)"
-  type        = number
-  default     = 7
-
-  validation {
-    condition     = var.container_soft_delete_retention_days == null || (var.container_soft_delete_retention_days >= 1 && var.container_soft_delete_retention_days <= 365)
-    error_message = "Container soft delete retention must be between 1 and 365 days."
+    error_message = "Replication type must be one of: LRS, GRS, RAGRS, ZRS, GZRS, RAGZRS"
   }
 }
 
 variable "retention_days" {
-  description = "Number of days to retain audit logs before deletion (null for no expiration)"
   type        = number
-  default     = null
+  description = "Number of days to retain audit logs (minimum 365 for compliance)"
+  default     = 2555 # 7 years for SOC 2
 
   validation {
-    condition     = var.retention_days == null || var.retention_days >= 1
-    error_message = "Retention days must be at least 1 day."
+    condition     = var.retention_days >= 365
+    error_message = "Retention period must be at least 365 days for compliance"
   }
 }
 
-variable "transition_to_cool_days" {
-  description = "Days before transitioning to Cool storage tier"
-  type        = number
-  default     = 90
-}
-
-variable "transition_to_archive_days" {
-  description = "Days before transitioning to Archive storage tier"
-  type        = number
-  default     = 180
-}
-
 variable "network_default_action" {
-  description = "Default action for network rules (Allow or Deny)"
   type        = string
+  description = "Default action for network rules (Allow or Deny)"
   default     = "Deny"
 
   validation {
     condition     = contains(["Allow", "Deny"], var.network_default_action)
-    error_message = "Network default action must be Allow or Deny."
+    error_message = "Network default action must be Allow or Deny"
   }
 }
 
 variable "network_bypass" {
-  description = "Services to bypass network rules"
   type        = list(string)
+  description = "Services to bypass network rules"
   default     = ["AzureServices"]
 
   validation {
     condition     = alltrue([for s in var.network_bypass : contains(["None", "Logging", "Metrics", "AzureServices"], s)])
-    error_message = "Network bypass must contain valid values: None, Logging, Metrics, AzureServices."
+    error_message = "Network bypass must contain valid values: None, Logging, Metrics, AzureServices"
   }
 }
 
 variable "allowed_ip_ranges" {
-  description = "List of allowed IP address ranges (CIDR notation)"
   type        = list(string)
+  description = "List of IP ranges allowed to access the storage account"
   default     = []
 }
 
 variable "allowed_subnet_ids" {
-  description = "List of allowed virtual network subnet IDs"
   type        = list(string)
+  description = "List of subnet IDs allowed to access the storage account"
   default     = []
 }
 
 variable "enable_shared_key_access" {
-  description = "Allow access via shared access keys (set false for managed identity only)"
   type        = bool
+  description = "Allow access via shared access keys (set false for managed identity only)"
   default     = false
 }
 
 variable "enable_managed_identity" {
-  description = "Enable system-assigned managed identity for the storage account"
   type        = bool
+  description = "Enable system-assigned managed identity for the storage account"
   default     = true
 }
 
 variable "managed_identity_principal_id" {
-  description = "Principal ID of the managed identity to grant access (e.g., App Service, AKS)"
   type        = string
+  description = "Principal ID of the managed identity to grant access (e.g., App Service, AKS)"
   default     = null
 }
 
+variable "enable_threat_protection" {
+  type        = bool
+  description = "Enable Advanced Threat Protection"
+  default     = true
+}
+
 variable "log_analytics_workspace_id" {
-  description = "Log Analytics Workspace ID for diagnostic logs (null to disable)"
   type        = string
+  description = "Log Analytics workspace ID for diagnostics"
   default     = null
 }
 
 variable "tags" {
-  description = "Tags to apply to all resources"
   type        = map(string)
+  description = "Additional tags for resources"
   default     = {}
 }

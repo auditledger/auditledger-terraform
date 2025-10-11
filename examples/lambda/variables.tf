@@ -10,13 +10,13 @@ variable "environment" {
 }
 
 variable "retention_days" {
-  description = "Number of days to retain audit logs"
+  description = "Number of days to retain audit logs (minimum 365 days for compliance)"
   type        = number
-  default     = 365
+  default     = 2555 # 7 years for SOC 2
 }
 
 variable "lambda_zip_path" {
-  description = "Path to Lambda deployment package"
+  description = "Path to Lambda deployment package (Python .zip file)"
   type        = string
 }
 

@@ -1,90 +1,91 @@
-# AuditLedger S3 Storage Module Variables
+# AuditLedger S3 Immutable Storage Module Variables
 
 variable "bucket_name" {
+  type        = string
   description = "Name of the S3 bucket for audit logs"
-  type        = string
-}
 
-variable "force_destroy" {
-  description = "Allow bucket to be destroyed even if it contains objects (use with caution)"
-  type        = bool
-  default     = false
-}
-
-variable "enable_versioning" {
-  description = "Enable versioning for the S3 bucket (recommended for audit logs)"
-  type        = bool
-  default     = true
-}
-
-variable "enable_mfa_delete" {
-  description = "Enable MFA delete for the S3 bucket (requires versioning)"
-  type        = bool
-  default     = false
-}
-
-variable "kms_key_id" {
-  description = "KMS key ID for bucket encryption (if null, uses AES256)"
-  type        = string
-  default     = null
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$", var.bucket_name))
+    error_message = "Bucket name must be between 3-63 characters, lowercase, and contain only letters, numbers, and hyphens"
+  }
 }
 
 variable "retention_days" {
-  description = "Number of days to retain audit logs (null for no expiration)"
   type        = number
+  description = "Number of days to retain audit logs (minimum 365 for compliance)"
+  default     = 2555 # 7 years for SOC 2
+
+  validation {
+    condition     = var.retention_days >= 365
+    error_message = "Retention period must be at least 365 days for compliance. Recommended: 2555 days (7 years) for SOC 2."
+  }
+}
+
+variable "object_lock_mode" {
+  type        = string
+  description = "Object Lock mode: COMPLIANCE (strict) or GOVERNANCE (can be overridden with special permissions)"
+  default     = "COMPLIANCE"
+
+  validation {
+    condition     = contains(["COMPLIANCE", "GOVERNANCE"], var.object_lock_mode)
+    error_message = "Object Lock mode must be either COMPLIANCE or GOVERNANCE"
+  }
+}
+
+variable "auditledger_role_arns" {
+  type        = list(string)
+  description = "ARNs of IAM roles that AuditLedger uses to write audit logs"
+
+  validation {
+    condition     = length(var.auditledger_role_arns) > 0
+    error_message = "At least one AuditLedger role ARN must be provided"
+  }
+}
+
+variable "admin_role_arns" {
+  type        = list(string)
+  description = "ARNs of IAM roles that can manage Object Lock configuration (extremely privileged)"
+  default     = []
+}
+
+variable "governance_bypass_role_arns" {
+  type        = list(string)
+  description = "ARNs of IAM roles that can bypass GOVERNANCE mode retention (only if using GOVERNANCE mode)"
+  default     = []
+}
+
+variable "kms_key_id" {
+  type        = string
+  description = "KMS key ID for encryption at rest (optional, uses S3 default encryption if not provided)"
   default     = null
 }
 
-variable "transition_to_ia_days" {
-  description = "Days before transitioning to Infrequent Access storage class"
-  type        = number
-  default     = 90
-}
-
-variable "transition_to_glacier_days" {
-  description = "Days before transitioning to Glacier storage class"
-  type        = number
-  default     = 180
-}
-
-variable "logging_bucket" {
-  description = "S3 bucket name for access logs (null to disable)"
-  type        = string
-  default     = null
-}
-
-variable "iam_policy_name" {
-  description = "Name of the IAM policy for AuditLedger access"
-  type        = string
-  default     = "AuditLedgerS3AccessPolicy"
-}
-
-variable "iam_policy_path" {
-  description = "Path for the IAM policy"
-  type        = string
-  default     = "/"
-}
-
-variable "create_iam_role" {
-  description = "Whether to create an IAM role for the application"
+variable "enable_lifecycle_rules" {
   type        = bool
-  default     = false
+  description = "Enable lifecycle rules for cost optimization (transitions to cheaper storage classes)"
+  default     = true
 }
 
-variable "iam_role_name" {
-  description = "Name of the IAM role (if create_iam_role is true)"
+variable "access_log_bucket" {
   type        = string
-  default     = "AuditLedgerS3AccessRole"
+  description = "S3 bucket for access logging (optional but recommended for compliance)"
+  default     = null
 }
 
-variable "iam_role_trust_policy" {
-  description = "IAM role trust policy (assume role policy)"
+variable "replication_bucket_arn" {
   type        = string
-  default     = ""
+  description = "ARN of destination bucket for cross-region replication (optional but recommended for DR)"
+  default     = null
+}
+
+variable "replication_role_arn" {
+  type        = string
+  description = "ARN of IAM role for replication (required if replication_bucket_arn is set)"
+  default     = null
 }
 
 variable "tags" {
-  description = "Tags to apply to all resources"
   type        = map(string)
+  description = "Additional tags for the S3 bucket"
   default     = {}
 }
