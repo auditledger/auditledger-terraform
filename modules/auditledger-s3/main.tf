@@ -271,3 +271,34 @@ resource "aws_s3_bucket_replication_configuration" "audit_logs" {
     }
   }
 }
+
+# IAM Policy for applications to access S3 bucket
+# Applications can attach this policy to their IAM roles
+# tfsec:ignore:aws-iam-no-policy-wildcards - Wildcard required for audit log writes to any path in bucket
+resource "aws_iam_policy" "s3_access" {
+  name        = "${var.bucket_name}-access-policy"
+  description = "Policy for accessing ${var.bucket_name} S3 bucket"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "S3BucketAccess"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:GetObjectVersion",
+          "s3:ListBucket",
+          "s3:ListBucketVersions"
+        ]
+        Resource = [
+          aws_s3_bucket.audit_logs.arn,
+          "${aws_s3_bucket.audit_logs.arn}/*"
+        ]
+      }
+    ]
+  })
+
+  tags = var.tags
+}

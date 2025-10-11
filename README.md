@@ -103,7 +103,7 @@ module "auditledger_storage" {
 ### AWS
 - [EC2 Deployment](examples/ec2/) - Deploy on EC2 with IAM instance profile
 - [ECS Fargate](examples/ecs-fargate/) - Containerized deployment on ECS
-- [Lambda Function](examples/lambda/) - Serverless deployment
+- [Lambda Function](examples/lambda/) - Serverless deployment with Python
 
 ### Azure
 - [App Service](examples/azure-app-service/) - Deploy on Azure App Service with managed identity

@@ -33,3 +33,13 @@ output "immutability_verified" {
   description = "Confirmation that immutability is enforced"
   value       = true
 }
+
+output "iam_policy_arn" {
+  description = "ARN of the IAM policy for S3 bucket access"
+  value       = aws_iam_policy.s3_access.arn
+}
+
+output "iam_policy_name" {
+  description = "Name of the IAM policy for S3 bucket access"
+  value       = aws_iam_policy.s3_access.name
+}

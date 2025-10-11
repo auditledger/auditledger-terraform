@@ -1,5 +1,5 @@
 # AuditLedger Azure App Service Deployment Example
-# This example deploys AuditLedger on Azure App Service with Blob Storage
+# This example deploys AuditLedger on Azure App Service with Immutable Blob Storage
 
 terraform {
   required_version = ">= 1.5.0"
@@ -80,7 +80,7 @@ resource "azurerm_linux_web_app" "auditledger" {
   tags = var.tags
 }
 
-# AuditLedger Storage Module
+# AuditLedger Immutable Storage Module
 module "auditledger_storage" {
   source = "../../modules/auditledger-azure-blob"
 
@@ -89,23 +89,13 @@ module "auditledger_storage" {
   location             = azurerm_resource_group.main.location
   container_name       = var.container_name
 
-  # Security: Use managed identity
+  # Immutability settings
+  retention_days = var.retention_days
+
+  # Security: Use managed identity (no connection strings)
   enable_managed_identity       = true
   managed_identity_principal_id = azurerm_linux_web_app.auditledger.identity[0].principal_id
   enable_shared_key_access      = false
-
-  # Versioning and auditing
-  enable_versioning  = true
-  enable_change_feed = true
-
-  # Soft delete protection
-  soft_delete_retention_days           = 30
-  container_soft_delete_retention_days = 7
-
-  # Lifecycle management
-  retention_days             = var.retention_days
-  transition_to_cool_days    = var.transition_to_cool_days
-  transition_to_archive_days = var.transition_to_archive_days
 
   # Network security
   network_default_action = var.network_default_action
@@ -113,6 +103,7 @@ module "auditledger_storage" {
   allowed_ip_ranges      = var.allowed_ip_ranges
 
   # Monitoring
+  enable_threat_protection   = true
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
 
   tags = var.tags

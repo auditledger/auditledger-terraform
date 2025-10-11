@@ -1,4 +1,5 @@
-# Example: AuditLedger S3 Storage for AWS Lambda Deployment
+# Example: AuditLedger S3 Immutable Storage for AWS Lambda Deployment
+# This example uses Python as Lambda's best-supported runtime
 
 terraform {
   required_version = ">= 1.5.0"
@@ -15,19 +16,11 @@ provider "aws" {
   region = var.aws_region
 }
 
-# AuditLedger S3 Bucket with IAM Role for Lambda
-module "auditledger_s3" {
-  source = "../../modules/auditledger-s3"
+# IAM Role for Lambda Function
+resource "aws_iam_role" "auditledger_lambda" {
+  name = "${var.environment}-auditledger-lambda-role"
 
-  bucket_name       = "${var.environment}-auditledger-logs"
-  enable_versioning = true
-  retention_days    = var.retention_days
-
-  # Create IAM role for Lambda Function
-  create_iam_role = true
-  iam_role_name   = "${var.environment}-auditledger-lambda-role"
-
-  iam_role_trust_policy = jsonencode({
+  assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
@@ -47,29 +40,63 @@ module "auditledger_s3" {
   }
 }
 
+# AuditLedger S3 Bucket with Immutability Enforcement
+module "auditledger_s3" {
+  source = "../../modules/auditledger-s3"
+
+  bucket_name            = "${var.environment}-auditledger-logs"
+  retention_days         = var.retention_days
+  object_lock_mode       = var.environment == "production" ? "COMPLIANCE" : "GOVERNANCE"
+  auditledger_role_arns  = [aws_iam_role.auditledger_lambda.arn]
+  enable_lifecycle_rules = true
+
+  tags = {
+    Environment = var.environment
+    Application = "AuditLedger"
+    ManagedBy   = "Terraform"
+  }
+}
+
+# Attach S3 access policy to Lambda role
+resource "aws_iam_role_policy_attachment" "auditledger_s3_access" {
+  role       = aws_iam_role.auditledger_lambda.name
+  policy_arn = module.auditledger_s3.iam_policy_arn
+}
+
 # Attach Lambda basic execution role
 resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
-  role       = module.auditledger_s3.iam_role_name
+  role       = aws_iam_role.auditledger_lambda.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# Lambda Function
+# Attach X-Ray tracing permissions
+resource "aws_iam_role_policy_attachment" "lambda_xray" {
+  role       = aws_iam_role.auditledger_lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
+}
+
+# Lambda Function with Python runtime
 resource "aws_lambda_function" "auditledger" {
   filename         = var.lambda_zip_path
   function_name    = "${var.environment}-auditledger"
-  role             = module.auditledger_s3.iam_role_arn
-  handler          = "AuditLedger::AuditLedger.LambdaHandler::HandleRequest"
+  role             = aws_iam_role.auditledger_lambda.arn
+  handler          = "lambda_function.lambda_handler"
   source_code_hash = filebase64sha256(var.lambda_zip_path)
-  runtime          = "dotnet6" # AWS Lambda doesn't support dotnet8 runtime yet
+  runtime          = "python3.12" # Latest Python runtime
   memory_size      = var.lambda_memory_size
   timeout          = var.lambda_timeout
 
+  # Enable X-Ray tracing for observability
+  tracing_config {
+    mode = "Active"
+  }
+
   environment {
     variables = {
-      AuditLedger__Storage__Provider          = "AwsS3"
-      AuditLedger__Storage__AwsS3__BucketName = module.auditledger_s3.bucket_name
-      AuditLedger__Storage__AwsS3__Region     = var.aws_region
-      ENVIRONMENT                             = var.environment
+      AUDITLEDGER_STORAGE_PROVIDER = "AwsS3"
+      AUDITLEDGER_S3_BUCKET_NAME   = module.auditledger_s3.bucket_id
+      AUDITLEDGER_S3_REGION        = var.aws_region
+      ENVIRONMENT                  = var.environment
     }
   }
 
@@ -80,6 +107,7 @@ resource "aws_lambda_function" "auditledger" {
 }
 
 # CloudWatch Log Group for Lambda
+# tfsec:ignore:aws-cloudwatch-log-group-customer-key - Example uses default encryption
 resource "aws_cloudwatch_log_group" "auditledger" {
   name              = "/aws/lambda/${aws_lambda_function.auditledger.function_name}"
   retention_in_days = 30

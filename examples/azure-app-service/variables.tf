@@ -45,21 +45,9 @@ variable "app_service_sku" {
 }
 
 variable "retention_days" {
-  description = "Number of days to retain audit logs (null for no expiration)"
+  description = "Number of days to retain audit logs (minimum 365 days for compliance)"
   type        = number
-  default     = 2555 # 7 years for compliance
-}
-
-variable "transition_to_cool_days" {
-  description = "Days before transitioning to Cool storage tier"
-  type        = number
-  default     = 90
-}
-
-variable "transition_to_archive_days" {
-  description = "Days before transitioning to Archive storage tier"
-  type        = number
-  default     = 365
+  default     = 2555 # 7 years for SOC 2
 }
 
 variable "network_default_action" {

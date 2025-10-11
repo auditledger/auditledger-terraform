@@ -36,3 +36,8 @@ output "application_insights_connection_string" {
   value       = azurerm_application_insights.main.connection_string
   sensitive   = true
 }
+
+output "immutability_verified" {
+  description = "Confirmation that immutability is enforced"
+  value       = module.auditledger_storage.immutability_verified
+}
