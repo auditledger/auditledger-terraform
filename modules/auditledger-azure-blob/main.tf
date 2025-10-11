@@ -21,8 +21,9 @@ resource "azurerm_resource_group" "audit_logs" {
   tags = merge(
     var.tags,
     {
-      ManagedBy = "Terraform"
-      Purpose   = "AuditLedger Storage"
+      Purpose    = "AuditLedger Immutable Storage"
+      Compliance = "SOC2-HIPAA-PCIDSS"
+      ManagedBy  = "Terraform"
     }
   )
 }
@@ -42,23 +43,27 @@ resource "azurerm_storage_account" "audit_logs" {
   allow_nested_items_to_be_public = false
   shared_access_key_enabled       = var.enable_shared_key_access
 
-  # Blob properties
+  # Blob properties - versioning is REQUIRED for immutability
   blob_properties {
-    versioning_enabled  = var.enable_versioning
-    change_feed_enabled = var.enable_change_feed
+    # Versioning is mandatory for immutable audit logs
+    versioning_enabled = true
 
-    dynamic "delete_retention_policy" {
-      for_each = var.soft_delete_retention_days != null ? [1] : []
-      content {
-        days = var.soft_delete_retention_days
-      }
+    # Change feed for point-in-time restore
+    change_feed_enabled           = true
+    change_feed_retention_in_days = var.retention_days
+
+    # Soft delete for additional protection
+    delete_retention_policy {
+      days = var.retention_days
     }
 
-    dynamic "container_delete_retention_policy" {
-      for_each = var.container_soft_delete_retention_days != null ? [1] : []
-      content {
-        days = var.container_soft_delete_retention_days
-      }
+    container_delete_retention_policy {
+      days = var.retention_days
+    }
+
+    # Restore policy (Azure limit is 365 days)
+    restore_policy {
+      days = min(var.retention_days, 365)
     }
   }
 
@@ -79,9 +84,11 @@ resource "azurerm_storage_account" "audit_logs" {
   tags = merge(
     var.tags,
     {
-      Name      = var.storage_account_name
-      Purpose   = "AuditLedger Storage"
-      ManagedBy = "Terraform"
+      Name       = var.storage_account_name
+      Purpose    = "AuditLedger Immutable Audit Logs"
+      Compliance = "SOC2-HIPAA-PCIDSS"
+      Immutable  = "true"
+      ManagedBy  = "Terraform"
     }
   )
 }
@@ -93,25 +100,29 @@ resource "azurerm_storage_container" "audit_logs" {
   container_access_type = "private"
 }
 
-# Management Policy (Lifecycle)
+# Management Policy for lifecycle and immutability
 resource "azurerm_storage_management_policy" "audit_logs" {
-  count              = var.retention_days != null ? 1 : 0
   storage_account_id = azurerm_storage_account.audit_logs.id
 
   rule {
-    name    = "audit-log-retention"
+    name    = "immutable-retention"
     enabled = true
 
     filters {
-      prefix_match = [var.container_name]
       blob_types   = ["blockBlob"]
+      prefix_match = ["${var.container_name}/"]
     }
 
     actions {
       base_blob {
-        tier_to_cool_after_days_since_modification_greater_than    = var.transition_to_cool_days
-        tier_to_archive_after_days_since_modification_greater_than = var.transition_to_archive_days
-        delete_after_days_since_modification_greater_than          = var.retention_days
+        # Tier to cool after 90 days
+        tier_to_cool_after_days_since_modification_greater_than = 90
+
+        # Tier to archive after 180 days
+        tier_to_archive_after_days_since_modification_greater_than = 180
+
+        # Delete after retention period (but blob is immutable during retention)
+        delete_after_days_since_modification_greater_than = var.retention_days
       }
 
       snapshot {
@@ -133,7 +144,15 @@ resource "azurerm_role_assignment" "storage_blob_data_contributor" {
   principal_id         = var.managed_identity_principal_id
 }
 
-# Optional: Diagnostic Settings for logging
+# Advanced Threat Protection
+resource "azurerm_advanced_threat_protection" "audit_logs" {
+  count = var.enable_threat_protection ? 1 : 0
+
+  target_resource_id = azurerm_storage_account.audit_logs.id
+  enabled            = true
+}
+
+# Diagnostic Settings for monitoring
 resource "azurerm_monitor_diagnostic_setting" "audit_logs" {
   count                      = var.log_analytics_workspace_id != null ? 1 : 0
   name                       = "auditledger-diagnostics"
