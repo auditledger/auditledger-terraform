@@ -1,46 +1,72 @@
 # AuditLedger Terraform Modules
 
-Official Terraform modules for deploying [AuditLedger](https://github.com/auditledger/auditledger-dotnet) infrastructure on AWS and Azure.
+Official Terraform modules for deploying [AuditLedger](https://github.com/auditledger/auditledger-dotnet) infrastructure on AWS and Azure with **mandatory immutability enforcement**.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Terraform](https://img.shields.io/badge/Terraform-1.5%2B-623CE4)](https://www.terraform.io/)
 
-## Overview
+## 🔒 Immutability-First Design
 
-AuditLedger is an immutable audit logging and compliance platform for .NET. This repository contains Terraform modules to provision secure, compliant storage infrastructure for audit logs.
+These modules enforce immutability at the infrastructure level - **it cannot be disabled**. This ensures audit logs are tamper-proof and compliant with regulatory requirements (SOC 2, HIPAA, PCIDSS).
+
+- ✅ **AWS**: S3 Object Lock with COMPLIANCE/GOVERNANCE mode (irreversible)
+- ✅ **Azure**: Mandatory versioning, soft delete, and retention policies
+- ✅ **Minimum retention**: 365 days (7 years default for SOC 2)
 
 ## Available Modules
 
-### AWS S3 Storage Module
+### AWS S3 Immutable Storage Module
 - **Path**: `modules/auditledger-s3`
-- **Purpose**: S3 bucket with security best practices for audit log storage
-- **Features**: Encryption, versioning, lifecycle policies, IAM policies
+- **Purpose**: S3 bucket with mandatory Object Lock for immutable audit logs
+- **Features**: Object Lock (COMPLIANCE/GOVERNANCE), encryption, versioning, lifecycle policies, replication
 
 [📖 Full Documentation](modules/auditledger-s3/README.md)
 
-### Azure Blob Storage Module
+### Azure Blob Immutable Storage Module
 - **Path**: `modules/auditledger-azure-blob`
-- **Purpose**: Azure Storage Account with Blob container for audit logs
-- **Features**: Managed identity, versioning, soft delete, lifecycle management
+- **Purpose**: Azure Storage with mandatory versioning and retention policies
+- **Features**: Versioning (always on), managed identity, soft delete, lifecycle management, threat protection
 
 [📖 Full Documentation](modules/auditledger-azure-blob/README.md)
 
 ## Quick Start
 
-### AWS S3
+### AWS S3 (COMPLIANCE Mode - Recommended for Production)
 
 ```hcl
-module "auditledger_storage" {
-  source = "github.com/auditledger/auditledger-terraform//modules/auditledger-s3?ref=v1.0.0"
+# Create IAM role for AuditLedger application
+resource "aws_iam_role" "auditledger_app" {
+  name = "auditledger-application-role"
 
-  bucket_name        = "my-company-audit-logs"
-  enable_versioning  = true
-  retention_days     = 2555  # 7 years
-  kms_key_id         = aws_kms_key.audit_logs.id
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"  # Or ECS, EKS, Lambda, etc.
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+module "auditledger_storage" {
+  source = "github.com/auditledger/auditledger-terraform//modules/auditledger-s3?ref=v2.0.0"
+
+  bucket_name            = "my-company-audit-logs"
+  retention_days         = 2555  # 7 years for SOC 2
+  object_lock_mode       = "COMPLIANCE"  # Strictest immutability
+  auditledger_role_arns  = [aws_iam_role.auditledger_app.arn]
+
+  # Optional: KMS encryption
+  kms_key_id             = aws_kms_key.audit_logs.id
+
+  # Optional: Cost optimization
+  enable_lifecycle_rules = true
 
   tags = {
-    Environment = "Production"
-    Compliance  = "SOC2,HIPAA,PCIDSS"
+    Environment = "production"
+    Compliance  = "SOC2-HIPAA-PCIDSS"
   }
 }
 ```
@@ -49,18 +75,25 @@ module "auditledger_storage" {
 
 ```hcl
 module "auditledger_storage" {
-  source = "github.com/auditledger/auditledger-terraform//modules/auditledger-azure-blob?ref=v1.0.0"
+  source = "github.com/auditledger/auditledger-terraform//modules/auditledger-azure-blob?ref=v2.0.0"
 
-  storage_account_name      = "mycompanyauditlogs"
-  resource_group_name       = "auditledger-rg"
-  location                  = "eastus"
-  enable_managed_identity   = true
-  enable_versioning         = true
-  retention_days            = 2555
+  storage_account_name          = "mycompanyauditlogs"
+  resource_group_name           = "auditledger-rg"
+  location                      = "eastus"
+  retention_days                = 2555  # 7 years for SOC 2
+
+  # Security: Managed identity (recommended)
+  enable_managed_identity       = true
+  managed_identity_principal_id = azurerm_linux_web_app.app.identity[0].principal_id
+  enable_shared_key_access      = false  # No connection strings
+
+  # Network security
+  network_default_action = "Deny"
+  allowed_subnet_ids     = [azurerm_subnet.app_subnet.id]
 
   tags = {
-    Environment = "Production"
-    Compliance  = "SOC2,HIPAA,PCIDSS"
+    Environment = "production"
+    Compliance  = "SOC2-HIPAA-PCIDSS"
   }
 }
 ```
@@ -121,51 +154,101 @@ In your `main.tf`:
 
 ```hcl
 module "auditledger" {
-  source = "github.com/auditledger/auditledger-terraform//modules/auditledger-s3?ref=v1.0.0"
+  source = "github.com/auditledger/auditledger-terraform//modules/auditledger-s3?ref=v2.0.0"
 
   # Your configuration...
 }
 ```
 
+## Immutability Enforcement
+
+### AWS S3 Object Lock
+
+**COMPLIANCE Mode (Production):**
+- No one (not even root) can delete objects during retention
+- Retention period cannot be shortened
+- Required for strict compliance (SOC 2, HIPAA, PCIDSS)
+
+**GOVERNANCE Mode (Testing):**
+- Special IAM permissions can override retention
+- Use only for development/testing environments
+
+### Azure Blob Storage
+
+**Enforced Features:**
+- Versioning always enabled
+- Change feed for audit trail
+- Soft delete for retention period
+- Point-in-time restore (up to 365 days)
+- Automatic lifecycle management
+
 ## Compliance & Security
 
 These modules are designed with compliance in mind:
 
-- ✅ **SOC 2** - Encryption, access controls, audit trails
-- ✅ **HIPAA** - 7-year retention, versioning, encryption at rest
-- ✅ **PCI DSS** - Secure storage, access logging, encryption
+- ✅ **SOC 2** - Encryption, access controls, audit trails, immutability
+- ✅ **HIPAA** - 7-year retention, versioning, encryption at rest, immutability
+- ✅ **PCI DSS** - Secure storage, access logging, encryption, immutability
 
 ### Security Features
 
 #### AWS
-- Server-side encryption (AES256 or KMS)
-- Block public access by default
-- Bucket versioning
-- Lifecycle policies for retention
-- IAM least-privilege policies
-- TLS-only access enforcement
+- **Object Lock** - Mandatory WORM (Write Once Read Many) protection
+- **Versioning** - Always enabled (required for Object Lock)
+- **Encryption** - Server-side encryption (AES256 or KMS)
+- **Public Access** - Completely blocked
+- **Bucket Policy** - Denies delete operations
+- **TLS-only** - Unencrypted connections denied
+- **Replication** - Optional cross-region DR
 
 #### Azure
-- TLS 1.2+ enforcement
-- Managed identity support (keyless auth)
-- Blob versioning and soft delete
-- Network security rules
-- Change feed for auditing
-- Automatic tiering (Hot → Cool → Archive)
+- **Versioning** - Always enabled (mandatory)
+- **Soft Delete** - Retention period enforcement
+- **Encryption** - TLS 1.2+ enforcement
+- **Managed Identity** - Keyless authentication
+- **Network Security** - Firewall rules and VNet integration
+- **Change Feed** - Complete audit trail
+- **Threat Protection** - Advanced threat detection
+- **Tiering** - Automatic Hot → Cool → Archive
 
 ## Module Versioning
 
 We follow [Semantic Versioning](https://semver.org/):
 
-- **Major** (v2.0.0): Breaking changes
-- **Minor** (v1.1.0): New features, backward compatible
-- **Patch** (v1.0.1): Bug fixes
+- **Major** (v2.0.0): Breaking changes (immutability enforcement added)
+- **Minor** (v2.1.0): New features, backward compatible
+- **Patch** (v2.0.1): Bug fixes
 
 **Recommended**: Pin to a specific version in production:
 
 ```hcl
-source = "github.com/auditledger/auditledger-terraform//modules/auditledger-s3?ref=v1.0.0"
+source = "github.com/auditledger/auditledger-terraform//modules/auditledger-s3?ref=v2.0.0"
 ```
+
+## Migration from v1.x to v2.x
+
+**Breaking Changes:**
+1. **AWS S3 Module:**
+   - `enable_versioning` removed (always enabled)
+   - `enable_mfa_delete` removed
+   - `force_destroy` removed (incompatible with Object Lock)
+   - `auditledger_role_arns` now required
+   - `retention_days` minimum is now 365 days
+   - `object_lock_mode` added (COMPLIANCE or GOVERNANCE)
+   - IAM role creation removed (use bucket policy instead)
+
+2. **Azure Blob Module:**
+   - `enable_versioning` removed (always enabled)
+   - `enable_change_feed` removed (always enabled)
+   - `soft_delete_retention_days` tied to `retention_days`
+   - `retention_days` minimum is now 365 days
+   - Advanced Threat Protection added
+
+**Migration Steps:**
+1. Review your current configuration
+2. Update variable names per module documentation
+3. Test in non-production environment first
+4. Plan carefully - Object Lock is irreversible on AWS
 
 ## Cost Optimization
 
@@ -174,16 +257,13 @@ source = "github.com/auditledger/auditledger-terraform//modules/auditledger-s3?r
 Both modules support automatic tiering to reduce costs:
 
 **AWS S3:**
-```hcl
-transition_to_ia_days      = 90   # → Infrequent Access (50% cheaper)
-transition_to_glacier_days = 365  # → Glacier (95% cheaper)
-```
+- Standard → IA: After 90 days (46% cost savings)
+- IA → Glacier IR: After 180 days (71% savings)
+- Glacier IR → Glacier: After 365 days (83% savings)
 
 **Azure Blob:**
-```hcl
-transition_to_cool_days    = 90   # → Cool tier (50% cheaper)
-transition_to_archive_days = 365  # → Archive tier (95% cheaper)
-```
+- Hot → Cool: After 90 days (50% cost savings)
+- Cool → Archive: After 180 days (95% savings)
 
 ## Testing
 
@@ -198,15 +278,23 @@ terraform fmt -check -recursive
 
 # Security scanning
 tfsec .
+
+# Run all checks
+make check-all
 ```
 
 ### Integration Tests
 
 ```bash
-# Run terratest (if implemented)
-cd tests
+# Run terratest integration tests
+cd tests/integration
 go test -v -timeout 30m
+
+# Run specific test
+go test -v -timeout 30m -run TestS3ModuleImmutability
 ```
+
+**Note:** Integration tests create real cloud resources and incur costs. Tests use GOVERNANCE mode for AWS to allow cleanup.
 
 ## Contributing
 
@@ -217,7 +305,7 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Run validation: `terraform fmt -recursive && terraform validate`
+4. Run validation: `make test`
 5. Submit a pull request
 
 ## Support
