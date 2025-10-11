@@ -307,7 +307,7 @@ terraform destroy
 ## Related Examples
 
 - [EC2](../ec2/) - Traditional instance deployment
-- [Lambda](../lambda/) - Serverless function deployment
+- [Lambda](../lambda/) - Serverless Python function
 - [Azure App Service](../azure-app-service/) - Azure alternative
 
 ## Additional Resources
@@ -319,3 +319,77 @@ terraform destroy
 ## License
 
 MIT
+<!-- BEGINNING OF PRE-COMMIT-TERRAFORM DOCS HOOK -->
+README.md updated successfully
+<!-- END OF PRE-COMMIT-TERRAFORM DOCS HOOK -->
+
+<!-- BEGIN_TF_DOCS -->
+
+
+## Requirements
+
+## Requirements
+
+| Name | Version |
+|------|---------|
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.5.0 |
+| <a name="requirement_aws"></a> [aws](#requirement\_aws) | ~> 5.0 |
+
+## Providers
+
+## Providers
+
+| Name | Version |
+|------|---------|
+| <a name="provider_aws"></a> [aws](#provider\_aws) | 5.100.0 |
+
+## Modules
+
+## Modules
+
+| Name | Source | Version |
+|------|--------|---------|
+| <a name="module_auditledger_s3"></a> [auditledger\_s3](#module\_auditledger\_s3) | ../../modules/auditledger-s3 | n/a |
+
+## Resources
+
+## Resources
+
+| Name | Type |
+|------|------|
+| [aws_cloudwatch_log_group.auditledger](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_log_group) | resource |
+| [aws_ecs_task_definition.auditledger_app](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ecs_task_definition) | resource |
+| [aws_iam_role.auditledger_ecs_task](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
+| [aws_iam_role.ecs_execution_role](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
+| [aws_iam_role_policy_attachment.auditledger_s3_access](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
+| [aws_iam_role_policy_attachment.ecs_execution_role_policy](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
+| [aws_kms_alias.audit_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kms_alias) | resource |
+| [aws_kms_key.audit_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kms_key) | resource |
+| [aws_caller_identity.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/caller_identity) | data source |
+
+## Inputs
+
+## Inputs
+
+| Name | Description | Type | Default | Required |
+|------|-------------|------|---------|:--------:|
+| <a name="input_app_image"></a> [app\_image](#input\_app\_image) | Docker image for the application | `string` | n/a | yes |
+| <a name="input_aws_region"></a> [aws\_region](#input\_aws\_region) | AWS region | `string` | `"us-east-1"` | no |
+| <a name="input_environment"></a> [environment](#input\_environment) | Environment name (dev, staging, production) | `string` | n/a | yes |
+| <a name="input_retention_days"></a> [retention\_days](#input\_retention\_days) | Number of days to retain audit logs | `number` | `2555` | no |
+| <a name="input_task_cpu"></a> [task\_cpu](#input\_task\_cpu) | CPU units for ECS task | `string` | `"256"` | no |
+| <a name="input_task_memory"></a> [task\_memory](#input\_task\_memory) | Memory for ECS task | `string` | `"512"` | no |
+| <a name="input_team"></a> [team](#input\_team) | Team name | `string` | `"platform"` | no |
+
+## Outputs
+
+## Outputs
+
+| Name | Description |
+|------|-------------|
+| <a name="output_bucket_arn"></a> [bucket\_arn](#output\_bucket\_arn) | ARN of the audit logs S3 bucket |
+| <a name="output_bucket_id"></a> [bucket\_id](#output\_bucket\_id) | ID of the audit logs S3 bucket |
+| <a name="output_iam_task_role_arn"></a> [iam\_task\_role\_arn](#output\_iam\_task\_role\_arn) | ARN of the ECS task IAM role |
+| <a name="output_immutability_verified"></a> [immutability\_verified](#output\_immutability\_verified) | Confirmation that immutability is enforced |
+| <a name="output_task_definition_arn"></a> [task\_definition\_arn](#output\_task\_definition\_arn) | ARN of the ECS task definition |
+<!-- END_TF_DOCS -->

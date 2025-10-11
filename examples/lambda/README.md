@@ -1,57 +1,108 @@
-# Lambda Deployment Example
+# AWS Lambda Deployment Example (Python)
 
-This example demonstrates how to deploy AuditLedger as an AWS Lambda function with S3 storage for audit logs.
+This example demonstrates how to deploy AuditLedger as an AWS Lambda function with Python runtime and S3 immutable storage for audit logs.
 
 ## Architecture
 
 ```
-API Gateway / EventBridge
-    ↓
-Lambda Function
-├── Execution Role (from module) → S3 access
-└── Writes to → S3 Bucket (audit logs)
+Lambda Function (Python 3.12)
+├── IAM Role → S3 access
+├── X-Ray Tracing enabled
+├── CloudWatch Logs
+└── S3 Bucket (immutable audit logs)
+
+Optional: API Gateway → Lambda
 ```
 
 ## Features
 
-- ✅ Serverless deployment (pay per invocation)
-- ✅ S3 bucket with versioning and encryption
-- ✅ IAM role with least-privilege S3 access
-- ✅ Automatic lifecycle policies for cost optimization
+- ✅ Serverless deployment with Python 3.12 (latest runtime)
+- ✅ S3 bucket with Object Lock immutability
+- ✅ X-Ray tracing for observability
+- ✅ IAM roles with least-privilege access
 - ✅ CloudWatch Logs integration
+- ✅ Optional API Gateway HTTP endpoint
+- ✅ Automatic lifecycle policies for cost optimization
 
 ## Prerequisites
 
 - AWS account with appropriate permissions
-- Lambda deployment package (.zip file with your function)
-- .NET 6 runtime support
+- Python 3.12+ for local development
+- Lambda deployment package (zip file with your code)
+
+## Example Python Lambda Handler
+
+Create a simple Python Lambda function that uses AuditLedger:
+
+**`lambda_function.py`:**
+```python
+import json
+import boto3
+import os
+from datetime import datetime
+
+s3_client = boto3.client('s3')
+
+def lambda_handler(event, context):
+    """
+    Example Lambda handler that writes audit logs to S3
+    """
+    bucket_name = os.environ['AUDITLEDGER_S3_BUCKET_NAME']
+
+    # Create audit log entry
+    audit_entry = {
+        'timestamp': datetime.utcnow().isoformat(),
+        'event': event,
+        'context': {
+            'function_name': context.function_name,
+            'request_id': context.request_id
+        }
+    }
+
+    # Write to S3 (immutable storage)
+    key = f"audit-logs/{datetime.utcnow().date()}/{context.request_id}.json"
+
+    s3_client.put_object(
+        Bucket=bucket_name,
+        Key=key,
+        Body=json.dumps(audit_entry),
+        ContentType='application/json'
+    )
+
+    return {
+        'statusCode': 200,
+        'body': json.dumps({
+            'message': 'Audit log written',
+            'log_key': key
+        })
+    }
+```
+
+**Package it:**
+```bash
+# Create deployment package
+zip lambda.zip lambda_function.py
+
+# Or with dependencies
+pip install -r requirements.txt -t .
+zip -r lambda.zip .
+```
 
 ## Usage
 
-### 1. Build Your Lambda Package
-
-```bash
-# Build and package your .NET Lambda function
-dotnet publish -c Release -o publish/
-cd publish
-zip -r ../function.zip .
-cd ..
-```
-
-### 2. Configure Variables
+### 1. Configure Variables
 
 Create a `terraform.tfvars` file:
 
 ```hcl
-aws_region         = "us-east-1"
-environment        = "production"
-lambda_zip_path    = "./function.zip"  # Path to your Lambda package
-lambda_memory_size = 512               # MB
-lambda_timeout     = 30                # seconds
-retention_days     = 2555              # 7 years for HIPAA
+aws_region       = "us-east-1"
+environment      = "dev"
+lambda_zip_path  = "./lambda.zip"  # Path to your deployment package
+retention_days   = 2555             # 7 years for SOC 2
+create_api_gateway = true           # Optional HTTP endpoint
 ```
 
-### 3. Deploy
+### 2. Deploy
 
 ```bash
 terraform init
@@ -59,395 +110,124 @@ terraform plan
 terraform apply
 ```
 
-### 4. Test Your Function
+### 3. Test Your Function
 
 ```bash
-# Invoke the function
+# Invoke directly
 aws lambda invoke \
-  --function-name <environment>-auditledger \
+  --function-name dev-auditledger \
   --payload '{"test": "data"}' \
   response.json
 
-# View the response
-cat response.json
+# Or via API Gateway (if enabled)
+curl -X POST https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/audit \
+  -H "Content-Type: application/json" \
+  -d '{"test": "data"}'
+```
 
-# Check logs
-aws logs tail /aws/lambda/<environment>-auditledger --follow
+### 4. View Audit Logs
+
+```bash
+# List logs in S3
+aws s3 ls s3://dev-auditledger-logs/audit-logs/ --recursive
+
+# Download a specific log
+aws s3 cp s3://dev-auditledger-logs/audit-logs/2024-01-15/abc-123.json .
 ```
 
 ## Configuration Options
 
-### Lambda Runtime
-
-Currently using .NET 6 (dotnet6):
-
-```hcl
-runtime = "dotnet6"
-```
-
-**Note:** AWS Lambda supports .NET 6, but .NET 8 support is coming soon. Update the runtime when available.
-
 ### Memory and Timeout
 
-Lambda pricing is based on memory allocated and execution time:
+Adjust based on your workload:
 
 ```hcl
-# Small workload (cheap)
-lambda_memory_size = 256   # MB
-lambda_timeout     = 10    # seconds
-
-# Medium workload (balanced)
-lambda_memory_size = 512   # MB
-lambda_timeout     = 30    # seconds
-
-# Large workload (higher cost)
-lambda_memory_size = 1024  # MB
-lambda_timeout     = 60    # seconds
+lambda_memory_size = 1024  # MB (128-10240)
+lambda_timeout     = 60    # seconds (1-900)
 ```
 
-**Tip:** More memory = more CPU power. Sometimes increasing memory reduces execution time and overall cost.
-
-### S3 Bucket Configuration
-
-The S3 bucket includes:
-- Server-side encryption (AES256)
-- Versioning enabled
-- Public access blocked
-- Lifecycle policies for cost optimization
-
-## Outputs
-
-| Name | Description |
-|------|-------------|
-| `function_name` | Lambda function name |
-| `function_arn` | Lambda function ARN |
-| `bucket_name` | S3 bucket for audit logs |
-| `bucket_arn` | S3 bucket ARN |
-| `iam_role_arn` | Lambda execution role ARN |
-
-## Environment Variables
-
-Your Lambda function automatically receives:
-
-```json
-{
-  "AuditLedger__Storage__Provider": "AwsS3",
-  "AuditLedger__Storage__AwsS3__BucketName": "<from-terraform>",
-  "AuditLedger__Storage__AwsS3__Region": "us-east-1"
-}
-```
-
-Example .NET Lambda handler:
-
-```csharp
-public class Function
-{
-    private readonly IAuditLedgerService _auditLedger;
-
-    public Function()
-    {
-        var services = new ServiceCollection();
-
-        services.AddAuditLedger(options =>
-        {
-            // Configuration automatically loaded from environment variables
-            options.Storage.Provider = StorageProvider.AwsS3;
-        });
-
-        var serviceProvider = services.BuildServiceProvider();
-        _auditLedger = serviceProvider.GetRequiredService<IAuditLedgerService>();
-    }
-
-    public async Task<APIGatewayProxyResponse> FunctionHandler(
-        APIGatewayProxyRequest request,
-        ILambdaContext context)
-    {
-        // Log audit event
-        await _auditLedger.LogEventAsync(new AuditEvent
-        {
-            EventType = "api.request",
-            UserId = request.RequestContext.Identity.User,
-            // ... other fields
-        });
-
-        return new APIGatewayProxyResponse
-        {
-            StatusCode = 200,
-            Body = JsonSerializer.Serialize(new { message = "Success" })
-        };
-    }
-}
-```
-
-## Triggers
-
-This example deploys the Lambda function without triggers. Add triggers based on your use case:
-
-### API Gateway (REST API)
+### Immutability Mode
 
 ```hcl
-resource "aws_api_gateway_rest_api" "api" {
-  name = "${var.environment}-auditledger-api"
-}
+# For production - strictest protection
+environment = "production"  # Uses COMPLIANCE mode
 
-resource "aws_lambda_permission" "apigw" {
-  statement_id  = "AllowAPIGatewayInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.auditledger.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.api.execution_arn}/*/*"
-}
+# For development - allows cleanup
+environment = "dev"         # Uses GOVERNANCE mode
 ```
 
-### EventBridge (CloudWatch Events)
+### API Gateway
 
 ```hcl
-resource "aws_cloudwatch_event_rule" "schedule" {
-  name                = "${var.environment}-auditledger-schedule"
-  description         = "Trigger Lambda on schedule"
-  schedule_expression = "rate(5 minutes)"
-}
-
-resource "aws_cloudwatch_event_target" "lambda" {
-  rule      = aws_cloudwatch_event_rule.schedule.name
-  target_id = "lambda"
-  arn       = aws_lambda_function.auditledger.arn
-}
-
-resource "aws_lambda_permission" "eventbridge" {
-  statement_id  = "AllowEventBridgeInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.auditledger.function_name
-  principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.schedule.arn
-}
-```
-
-### SQS Queue
-
-```hcl
-resource "aws_sqs_queue" "events" {
-  name = "${var.environment}-auditledger-events"
-}
-
-resource "aws_lambda_event_source_mapping" "sqs" {
-  event_source_arn = aws_sqs_queue.events.arn
-  function_name    = aws_lambda_function.auditledger.function_name
-  batch_size       = 10
-}
-```
-
-## Cost Estimate
-
-**Monthly cost (us-east-1):**
-
-| Resource | Usage | Cost |
-|----------|-------|------|
-| Lambda (512MB) | 1M requests, 1s avg | ~$4.17/month |
-| S3 storage | 10GB | ~$0.23/month |
-| S3 requests | 1M PUTs | ~$5/month |
-| CloudWatch Logs | 1GB | ~$0.50/month |
-
-**Total:** ~$10/month for 1 million requests
-
-**Free tier:**
-- 1 million free requests per month
-- 400,000 GB-seconds of compute time per month
-
-## Performance Optimization
-
-### Cold Starts
-
-Lambda cold starts can add latency. To reduce:
-
-1. **Increase memory**: More memory = faster initialization
-   ```hcl
-   lambda_memory_size = 1024  # Faster cold starts
-   ```
-
-2. **Use Provisioned Concurrency** (additional cost):
-   ```hcl
-   resource "aws_lambda_provisioned_concurrency_config" "example" {
-     function_name                     = aws_lambda_function.auditledger.function_name
-     provisioned_concurrent_executions = 2
-     qualifier                         = aws_lambda_function.auditledger.version
-   }
-   ```
-
-3. **Keep functions warm** (scheduled invocations):
-   ```hcl
-   # EventBridge rule to ping Lambda every 5 minutes
-   ```
-
-### Timeout Configuration
-
-Set timeout based on your workload:
-
-```hcl
-lambda_timeout = 30  # Default
-lambda_timeout = 900 # Maximum (15 minutes)
-```
-
-**Tip:** Shorter timeouts fail faster and cost less if there's an error.
-
-## Security Considerations
-
-### VPC Configuration (Optional)
-
-For accessing resources in a VPC:
-
-```hcl
-vpc_config {
-  subnet_ids         = var.private_subnet_ids
-  security_group_ids = [aws_security_group.lambda.id]
-}
-```
-
-**Note:** VPC configuration can increase cold start time.
-
-### Environment Variable Encryption
-
-For sensitive configuration:
-
-```hcl
-kms_key_arn = aws_kms_key.lambda.arn
-
-environment {
-  variables = {
-    SENSITIVE_VALUE = "encrypted-value"
-  }
-}
-```
-
-### Reserved Concurrency
-
-Prevent runaway costs:
-
-```hcl
-reserved_concurrent_executions = 10  # Max 10 concurrent executions
+create_api_gateway = true  # Enables HTTP endpoint
 ```
 
 ## Monitoring
 
-### CloudWatch Metrics
+### CloudWatch Logs
 
-Lambda automatically provides:
-- Invocations
-- Duration
-- Errors
-- Throttles
-
-### CloudWatch Alarms
-
-```hcl
-resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
-  alarm_name          = "${var.environment}-auditledger-errors"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "1"
-  metric_name         = "Errors"
-  namespace           = "AWS/Lambda"
-  period              = "60"
-  statistic           = "Sum"
-  threshold           = "10"
-  alarm_description   = "Lambda function errors"
-
-  dimensions = {
-    FunctionName = aws_lambda_function.auditledger.function_name
-  }
-}
-```
-
-## Troubleshooting
-
-### Function can't write to S3
-
-Check IAM role:
 ```bash
-terraform output iam_role_arn
-aws iam get-role --role-name <role-name>
+# View logs
+aws logs tail /aws/lambda/dev-auditledger --follow
+
+# Filter errors
+aws logs filter-pattern /aws/lambda/dev-auditledger --filter-pattern "ERROR"
 ```
 
-### Function times out
+### X-Ray Tracing
 
-1. Increase timeout:
-   ```hcl
-   lambda_timeout = 60
-   ```
+View traces in AWS Console:
+- Navigate to X-Ray → Traces
+- Filter by function name
+- Analyze performance and errors
 
-2. Check function logs:
-   ```bash
-   aws logs tail /aws/lambda/<function-name> --follow
-   ```
+### Metrics
 
-3. Increase memory (also increases CPU):
-   ```hcl
-   lambda_memory_size = 1024
-   ```
+Key CloudWatch metrics:
+- `Invocations` - Total function calls
+- `Duration` - Execution time
+- `Errors` - Failed invocations
+- `Throttles` - Rate limit hits
 
-### High costs
+## Cost Optimization
 
-1. **Check invocation count**:
-   ```bash
-   aws cloudwatch get-metric-statistics \
-     --namespace AWS/Lambda \
-     --metric-name Invocations \
-     --dimensions Name=FunctionName,Value=<function-name> \
-     --start-time 2024-01-01T00:00:00Z \
-     --end-time 2024-01-31T23:59:59Z \
-     --period 86400 \
-     --statistics Sum
-   ```
+### Lambda Pricing
 
-2. **Set reserved concurrency** to limit costs:
-   ```hcl
-   reserved_concurrent_executions = 10
-   ```
+- **Requests**: $0.20 per 1M requests
+- **Duration**: $0.0000166667 per GB-second
 
-3. **Optimize function duration**: Faster execution = lower cost
+Example monthly cost (100K invocations):
+- Requests: $0.02
+- Duration (512MB, 500ms avg): $0.42
+- **Total**: ~$0.44/month
 
-## Production Hardening
+### S3 Storage
 
-For production deployments:
+Lifecycle policies automatically tier logs:
+- 90 days: Hot → IA (46% savings)
+- 180 days: IA → Glacier IR (71% savings)
+- 365 days: Glacier IR → Glacier (83% savings)
 
-1. **Enable X-Ray tracing**:
-   ```hcl
-   tracing_config {
-     mode = "Active"
-   }
-   ```
+## Security Best Practices
 
-2. **Use versioning and aliases**:
-   ```hcl
-   publish = true  # Create version on each deploy
-   ```
-
-3. **Dead Letter Queue**:
-   ```hcl
-   dead_letter_config {
-     target_arn = aws_sqs_queue.dlq.arn
-   }
-   ```
-
-4. **Configure retries**:
-   ```hcl
-   resource "aws_lambda_function_event_invoke_config" "example" {
-     function_name          = aws_lambda_function.auditledger.function_name
-     maximum_retry_attempts = 2
-   }
-   ```
+1. ✅ **Least Privilege IAM** - Lambda role has minimal S3 permissions
+2. ✅ **Immutable Storage** - Object Lock prevents log tampering
+3. ✅ **Encryption** - S3 encryption at rest (AES256/KMS)
+4. ✅ **TLS in Transit** - All S3 API calls use HTTPS
+5. ✅ **X-Ray Tracing** - Full observability of function execution
+6. ✅ **CloudWatch Logs** - Centralized logging
 
 ## Cleanup
 
 ```bash
+# Remove API Gateway first (if created)
+terraform destroy -target=aws_apigatewayv2_api.auditledger
+
+# Then destroy everything
 terraform destroy
 ```
 
-**Note:** S3 bucket must be empty before destruction:
-
-```bash
-aws s3 rm s3://<bucket-name> --recursive
-terraform destroy
-```
+**⚠️ Note:** S3 bucket with COMPLIANCE mode cannot be destroyed until all objects pass retention period.
 
 ## Related Examples
 
@@ -457,11 +237,89 @@ terraform destroy
 
 ## Additional Resources
 
-- [AWS Lambda Developer Guide](https://docs.aws.amazon.com/lambda/latest/dg/)
-- [Lambda Pricing Calculator](https://aws.amazon.com/lambda/pricing/)
-- [.NET on AWS Lambda](https://docs.aws.amazon.com/lambda/latest/dg/lambda-csharp.html)
+- [AWS Lambda Python Runtime](https://docs.aws.amazon.com/lambda/latest/dg/lambda-python.html)
 - [Lambda Best Practices](https://docs.aws.amazon.com/lambda/latest/dg/best-practices.html)
+- [Python boto3 S3 Documentation](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html)
 
 ## License
 
 MIT
+
+<!-- BEGINNING OF PRE-COMMIT-TERRAFORM DOCS HOOK -->
+README.md updated successfully
+<!-- END OF PRE-COMMIT-TERRAFORM DOCS HOOK -->
+
+<!-- BEGIN_TF_DOCS -->
+
+
+## Requirements
+
+## Requirements
+
+| Name | Version |
+|------|---------|
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.5.0 |
+| <a name="requirement_aws"></a> [aws](#requirement\_aws) | ~> 5.0 |
+
+## Providers
+
+## Providers
+
+| Name | Version |
+|------|---------|
+| <a name="provider_aws"></a> [aws](#provider\_aws) | 5.100.0 |
+
+## Modules
+
+## Modules
+
+| Name | Source | Version |
+|------|--------|---------|
+| <a name="module_auditledger_s3"></a> [auditledger\_s3](#module\_auditledger\_s3) | ../../modules/auditledger-s3 | n/a |
+
+## Resources
+
+## Resources
+
+| Name | Type |
+|------|------|
+| [aws_apigatewayv2_api.auditledger](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/apigatewayv2_api) | resource |
+| [aws_apigatewayv2_integration.auditledger](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/apigatewayv2_integration) | resource |
+| [aws_apigatewayv2_route.auditledger](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/apigatewayv2_route) | resource |
+| [aws_apigatewayv2_stage.auditledger](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/apigatewayv2_stage) | resource |
+| [aws_cloudwatch_log_group.auditledger](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_log_group) | resource |
+| [aws_iam_role.auditledger_lambda](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
+| [aws_iam_role_policy_attachment.auditledger_s3_access](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
+| [aws_iam_role_policy_attachment.lambda_basic_execution](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
+| [aws_iam_role_policy_attachment.lambda_xray](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
+| [aws_lambda_function.auditledger](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function) | resource |
+| [aws_lambda_permission.api_gateway](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_permission) | resource |
+
+## Inputs
+
+## Inputs
+
+| Name | Description | Type | Default | Required |
+|------|-------------|------|---------|:--------:|
+| <a name="input_aws_region"></a> [aws\_region](#input\_aws\_region) | AWS region | `string` | `"us-east-1"` | no |
+| <a name="input_create_api_gateway"></a> [create\_api\_gateway](#input\_create\_api\_gateway) | Whether to create API Gateway for HTTP access | `bool` | `false` | no |
+| <a name="input_environment"></a> [environment](#input\_environment) | Environment name | `string` | n/a | yes |
+| <a name="input_lambda_memory_size"></a> [lambda\_memory\_size](#input\_lambda\_memory\_size) | Lambda memory size in MB | `number` | `512` | no |
+| <a name="input_lambda_timeout"></a> [lambda\_timeout](#input\_lambda\_timeout) | Lambda timeout in seconds | `number` | `30` | no |
+| <a name="input_lambda_zip_path"></a> [lambda\_zip\_path](#input\_lambda\_zip\_path) | Path to Lambda deployment package (Python .zip file) | `string` | n/a | yes |
+| <a name="input_retention_days"></a> [retention\_days](#input\_retention\_days) | Number of days to retain audit logs (minimum 365 days for compliance) | `number` | `2555` | no |
+
+## Outputs
+
+## Outputs
+
+| Name | Description |
+|------|-------------|
+| <a name="output_api_gateway_endpoint"></a> [api\_gateway\_endpoint](#output\_api\_gateway\_endpoint) | API Gateway endpoint URL |
+| <a name="output_bucket_arn"></a> [bucket\_arn](#output\_bucket\_arn) | ARN of the audit logs S3 bucket |
+| <a name="output_bucket_id"></a> [bucket\_id](#output\_bucket\_id) | ID of the audit logs S3 bucket |
+| <a name="output_immutability_verified"></a> [immutability\_verified](#output\_immutability\_verified) | Confirmation that immutability is enforced |
+| <a name="output_lambda_function_arn"></a> [lambda\_function\_arn](#output\_lambda\_function\_arn) | ARN of the Lambda function |
+| <a name="output_lambda_function_name"></a> [lambda\_function\_name](#output\_lambda\_function\_name) | Name of the Lambda function |
+| <a name="output_lambda_role_arn"></a> [lambda\_role\_arn](#output\_lambda\_role\_arn) | ARN of the Lambda IAM role |
+<!-- END_TF_DOCS -->
