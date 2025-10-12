@@ -41,8 +41,6 @@ terraform.rc
 .plans/
 
 # Testing artifacts
-tests/go.mod
-tests/go.sum
 tests/.test-data/
 tests/*.log
 *.test

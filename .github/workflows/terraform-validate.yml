@@ -161,13 +161,14 @@ jobs:
           }
           EOF
 
-          # Run terraform
+          # Run terraform (disable lifecycle rules - LocalStack limitation)
           terraform init
           terraform apply -auto-approve \
             -var="bucket_name=smoke-test-bucket" \
             -var="retention_days=365" \
             -var="object_lock_mode=GOVERNANCE" \
-            -var='auditledger_role_arns=["arn:aws:iam::000000000000:role/test"]'
+            -var='auditledger_role_arns=["arn:aws:iam::000000000000:role/test"]' \
+            -var="enable_lifecycle_rules=false"
 
           # Validate outputs
           terraform output -json
