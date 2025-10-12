@@ -267,7 +267,28 @@ Both modules support automatic tiering to reduce costs:
 
 ## Testing
 
-### Validation
+### Local Testing (Free, No Cloud Required)
+
+Test modules locally with LocalStack (no AWS account needed):
+
+```bash
+# 1. Start LocalStack
+docker compose up -d
+
+# 2. Load environment from .env file
+cp env.localstack.example .env.localstack
+source .env.localstack
+
+# 3. Run tests
+./scripts/test-localstack.sh
+
+# 4. Stop services
+docker compose down
+```
+
+**Environment variables:** Loaded from `.env.localstack` file locally, set in YAML for GitHub Actions.
+
+### Validation (Fast)
 
 ```bash
 # Validate Terraform syntax
@@ -283,7 +304,7 @@ tfsec .
 make check-all
 ```
 
-### Integration Tests
+### Integration Tests (Real Cloud)
 
 ```bash
 # Run terratest integration tests
@@ -294,7 +315,9 @@ go test -v -timeout 30m
 go test -v -timeout 30m -run TestS3ModuleImmutability
 ```
 
-**Note:** Integration tests create real cloud resources and incur costs. Tests use GOVERNANCE mode for AWS to allow cleanup.
+**Note:** Integration tests create real cloud resources and incur costs. Use local testing for rapid iteration.
+
+See [.plans/integration_testing.md](.plans/integration_testing.md) for beginner's guide.
 
 ## Contributing
 

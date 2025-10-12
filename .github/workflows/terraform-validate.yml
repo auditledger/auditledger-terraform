@@ -99,3 +99,96 @@ jobs:
               exit 1
             fi
           done
+
+  smoke-test:
+    name: Smoke Test with LocalStack
+    runs-on: ubuntu-latest
+
+    services:
+      localstack:
+        image: localstack/localstack:3.0
+        ports:
+          - 4566:4566
+        env:
+          SERVICES: s3,iam,kms,sts
+          DEBUG: 1
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      - name: Wait for LocalStack
+        run: |
+          echo "Waiting for LocalStack to be ready..."
+          for i in {1..30}; do
+            if curl -s http://localhost:4566/_localstack/health | grep -q '"s3": "available"'; then
+              echo "✅ LocalStack is ready"
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+
+      - name: Test S3 module with LocalStack
+        env:
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          cd modules/auditledger-s3
+
+          # Create LocalStack provider override
+          cat > localstack_override.tf << 'EOF'
+          provider "aws" {
+            region                      = "us-east-1"
+            access_key                  = "test"
+            secret_key                  = "test"
+            skip_credentials_validation = true
+            skip_metadata_api_check     = true
+            skip_requesting_account_id  = true
+            s3_use_path_style           = true
+
+            endpoints {
+              s3  = "http://localhost:4566"
+              iam = "http://localhost:4566"
+              kms = "http://localhost:4566"
+            }
+          }
+          EOF
+
+          # Run terraform (disable lifecycle rules - LocalStack limitation)
+          terraform init
+          terraform apply -auto-approve \
+            -var="bucket_name=smoke-test-bucket" \
+            -var="retention_days=365" \
+            -var="object_lock_mode=GOVERNANCE" \
+            -var='auditledger_role_arns=["arn:aws:iam::000000000000:role/test"]' \
+            -var="enable_lifecycle_rules=false"
+
+          # Validate outputs
+          terraform output -json
+
+          echo "✅ Smoke test passed - S3 bucket with Object Lock created successfully"
+
+          # Note: Skip terraform destroy for LocalStack
+          # LocalStack has issues destroying Object Lock buckets, and the container
+          # will be torn down anyway at the end of the job
+          rm -f localstack_override.tf
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Run smoke tests
+        working-directory: tests/smoke
+        env:
+          AWS_ENDPOINT_URL: http://localhost:4566
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_S3_USE_PATH_STYLE: true
+        run: go test -v -timeout 5m

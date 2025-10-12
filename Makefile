@@ -1,5 +1,5 @@
 # AuditLedger Terraform - Development Commands
-.PHONY: help install check-links check-all format validate test clean
+.PHONY: help install check-links check-all format validate test clean local-up local-down local-test local-shell
 
 help: ## Show this help message
 	@echo "Available commands:"
@@ -48,8 +48,32 @@ test: ## Run pre-commit hooks on all files
 clean: ## Clean up temporary files
 	@echo "🧹 Cleaning up..."
 	@rm -rf .terraform/
-	@rm -f .terraform.lock.hcl
 	@rm -f results.sarif
 	@find . -name "*.tfstate*" -delete
 	@find . -name ".terraform" -type d -exec rm -rf {} + 2>/dev/null || true
 	@echo "✅ Cleanup complete!"
+
+local-up: ## Start LocalStack and Azurite for local testing
+	@echo "🚀 Starting local testing environment..."
+	@./scripts/setup-local-testing.sh
+
+local-down: ## Stop LocalStack and Azurite
+	@echo "🛑 Stopping local testing environment..."
+	@./scripts/teardown-local-testing.sh
+
+local-test: ## Run integration tests against LocalStack
+	@echo "🧪 Running tests against LocalStack..."
+	@if [ ! -f .env.localstack ]; then \
+		echo "Creating .env.localstack from example..."; \
+		cp env.localstack.example .env.localstack; \
+	fi
+	@./scripts/test-localstack.sh
+
+local-shell: ## Open shell with LocalStack environment loaded
+	@echo "🐚 Starting shell with LocalStack environment..."
+	@if [ ! -f .env.localstack ]; then \
+		cp env.localstack.example .env.localstack; \
+		echo "✅ Created .env.localstack"; \
+	fi
+	@echo "Environment loaded. Run 'exit' to return."
+	@bash --rcfile <(echo '. ~/.bashrc 2>/dev/null || true; source .env.localstack; echo "✅ LocalStack environment loaded"')

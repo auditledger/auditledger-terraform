@@ -1,0 +1,92 @@
+name: Contract Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  contract-tests:
+    name: Module Contract Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-contract-${{ hashFiles('tests/go.sum') }}
+
+      - name: Download Go modules
+        working-directory: tests
+        run: go mod download
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+          terraform_wrapper: false
+
+      - name: Run contract tests
+        working-directory: tests/contract
+        run: go test -v -timeout 5m
+
+      - name: Run example validation tests
+        working-directory: tests/examples
+        run: go test -v -timeout 10m
+        env:
+          AWS_DEFAULT_REGION: us-east-1
+
+  module-interface-validation:
+    name: Validate Module Interfaces
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        module:
+          - modules/auditledger-s3
+          - modules/auditledger-azure-blob
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      - name: Validate required files exist
+        run: |
+          cd ${{ matrix.module }}
+
+          # Check required files
+          for file in main.tf variables.tf outputs.tf README.md; do
+            if [ ! -f "$file" ]; then
+              echo "::error::Missing required file: $file"
+              exit 1
+            fi
+          done
+
+      - name: Validate module has required outputs
+        run: |
+          cd ${{ matrix.module }}
+
+          # Check for immutability_verified output
+          if ! grep -q "immutability_verified" outputs.tf; then
+            echo "::error::Module missing immutability_verified output"
+            exit 1
+          fi
+
+          echo "✅ Module interface validated"

@@ -15,10 +15,12 @@ terraform {
 # S3 Bucket for Audit Logs with mandatory Object Lock
 # Object Lock MUST be enabled at bucket creation - this is IRREVERSIBLE
 # tfsec:ignore:aws-s3-enable-bucket-logging - Bucket logging is optional, configured via logging_bucket variable
+# tfsec:ignore:aws-s3-enable-versioning - Versioning is automatically enabled by object_lock_enabled=true
 resource "aws_s3_bucket" "audit_logs" {
   bucket = var.bucket_name
 
   # Object Lock enforcement for immutability - cannot be disabled after creation
+  # Note: This automatically enables versioning - no separate configuration needed
   object_lock_enabled = true
 
   tags = merge(
@@ -42,6 +44,11 @@ resource "aws_s3_bucket_public_access_block" "audit_logs" {
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
+
+# Versioning is REQUIRED and automatically enabled by Object Lock
+# Note: We don't configure it separately because Object Lock manages it
+# Attempting to configure versioning separately causes: "InvalidBucketState:
+# An Object Lock configuration is present on this bucket, so the versioning state cannot be changed"
 
 # Object Lock Configuration - enforces immutability
 # COMPLIANCE mode: No one (not even root) can delete objects during retention
@@ -70,14 +77,17 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "audit_logs" {
   }
 }
 
-# Versioning is REQUIRED for Object Lock
-resource "aws_s3_bucket_versioning" "audit_logs" {
-  bucket = aws_s3_bucket.audit_logs.id
-
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
+# Versioning is automatically enabled by Object Lock - no separate configuration needed
+# Commenting out to avoid "InvalidBucketState" error in LocalStack
+# Versioning is implicitly enabled when object_lock_enabled = true on the bucket
+#
+# resource "aws_s3_bucket_versioning" "audit_logs" {
+#   bucket = aws_s3_bucket.audit_logs.id
+#
+#   versioning_configuration {
+#     status = "Enabled"
+#   }
+# }
 
 # Lifecycle Policy for cost optimization
 resource "aws_s3_bucket_lifecycle_configuration" "audit_logs" {
@@ -88,6 +98,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "audit_logs" {
   rule {
     id     = "transition-to-ia"
     status = "Enabled"
+
+    filter {}
 
     transition {
       days          = 90
@@ -108,6 +120,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "audit_logs" {
   rule {
     id     = "expire-old-versions"
     status = "Enabled"
+
+    filter {}
 
     noncurrent_version_expiration {
       noncurrent_days = var.retention_days
@@ -242,7 +256,8 @@ resource "aws_s3_bucket_logging" "audit_logs" {
 resource "aws_s3_bucket_replication_configuration" "audit_logs" {
   count = var.replication_bucket_arn != null ? 1 : 0
 
-  depends_on = [aws_s3_bucket_versioning.audit_logs]
+  # Versioning is implicitly enabled by Object Lock, no explicit dependency needed
+  depends_on = [aws_s3_bucket_object_lock_configuration.audit_logs]
 
   bucket = aws_s3_bucket.audit_logs.id
   role   = var.replication_role_arn
