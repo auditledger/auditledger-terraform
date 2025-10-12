@@ -32,6 +32,12 @@ jobs:
         working-directory: tests
         run: go mod download
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+          terraform_wrapper: false
+
       - name: Run contract tests
         working-directory: tests/contract
         run: go test -v -timeout 5m
