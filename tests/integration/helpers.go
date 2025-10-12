@@ -29,9 +29,10 @@ func GetAWSConfig(t *testing.T, terraformDir string, vars map[string]interface{}
 	}
 
 	return &terraform.Options{
-		TerraformDir: terraformDir,
-		Vars:         vars,
-		EnvVars:      envVars,
+		TerraformDir:    terraformDir,
+		TerraformBinary: "terraform",
+		Vars:            vars,
+		EnvVars:         envVars,
 	}
 }
 
@@ -47,9 +48,10 @@ func GetAzureConfig(t *testing.T, terraformDir string, vars map[string]interface
 	}
 
 	return &terraform.Options{
-		TerraformDir: terraformDir,
-		Vars:         vars,
-		EnvVars:      envVars,
+		TerraformDir:    terraformDir,
+		TerraformBinary: "terraform",
+		Vars:            vars,
+		EnvVars:         envVars,
 	}
 }
 

@@ -15,7 +15,8 @@ func TestEC2Example(t *testing.T) {
 	t.Parallel()
 
 	terraformOptions := &terraform.Options{
-		TerraformDir: "../../examples/ec2",
+		TerraformDir:    "../../examples/ec2",
+		TerraformBinary: "terraform",
 		Vars: map[string]interface{}{
 			"environment":         "test",
 			"vpc_id":              "vpc-12345678", // Fake VPC for planning
@@ -47,7 +48,8 @@ func TestECSExample(t *testing.T) {
 	t.Parallel()
 
 	terraformOptions := &terraform.Options{
-		TerraformDir: "../../examples/ecs-fargate",
+		TerraformDir:    "../../examples/ecs-fargate",
+		TerraformBinary: "terraform",
 		Vars: map[string]interface{}{
 			"environment": "test",
 			"team":        "platform",
@@ -79,7 +81,8 @@ func TestLambdaExample(t *testing.T) {
 	dummyZip := "/tmp/lambda-test-dummy.zip"
 
 	terraformOptions := &terraform.Options{
-		TerraformDir: "../../examples/lambda",
+		TerraformDir:    "../../examples/lambda",
+		TerraformBinary: "terraform",
 		Vars: map[string]interface{}{
 			"environment":        "test",
 			"lambda_zip_path":    dummyZip,
@@ -110,7 +113,8 @@ func TestAzureAppServiceExample(t *testing.T) {
 	t.Parallel()
 
 	terraformOptions := &terraform.Options{
-		TerraformDir: "../../examples/azure-app-service",
+		TerraformDir:    "../../examples/azure-app-service",
+		TerraformBinary: "terraform",
 		Vars: map[string]interface{}{
 			"app_name":             "test-app",
 			"resource_group_name":  "test-rg",
