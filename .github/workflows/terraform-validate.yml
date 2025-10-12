@@ -192,3 +192,8 @@ jobs:
           AWS_DEFAULT_REGION: us-east-1
           AWS_S3_USE_PATH_STYLE: true
         run: go test -v -timeout 5m
+
+  # Note: Azure smoke test with Azurite not included
+  # Azurite only emulates blob storage APIs, not Azure Resource Manager
+  # The azurerm provider requires real Azure AD authentication
+  # Use example tests for Azure plan-only validation instead

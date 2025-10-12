@@ -73,9 +73,6 @@ Thumbs.db
 
 # Environment files (generated from examples)
 .env.localstack
-.env.azurite
 
-# Local testing with LocalStack and Azurite
+# Local testing with LocalStack
 .localstack/
-.azurite/
-.azurite-logs/

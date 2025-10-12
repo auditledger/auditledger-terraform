@@ -30,22 +30,9 @@ services:
     networks:
       - auditledger-test
 
-  # Azurite - Azure Storage emulation
-  azurite:
-    container_name: auditledger-azurite
-    image: mcr.microsoft.com/azure-storage/azurite:latest
-    ports:
-      - "10000:10000"  # Blob service
-      - "10001:10001"  # Queue service
-      - "10002:10002"  # Table service
-    command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --debug /workspace/debug.log
-    volumes:
-      - "${AZURITE_VOLUME_DIR:-./.azurite}:/data"
-      - "./.azurite-logs:/workspace"
-    environment:
-      - AZURITE_ACCOUNTS=devstoreaccount1:Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==
-    networks:
-      - auditledger-test
+  # Note: Azurite removed - doesn't work with Terraform's azurerm provider
+  # The azurerm provider requires real Azure AD authentication
+  # Use example tests for Azure plan-only validation instead
 
 networks:
   auditledger-test:
