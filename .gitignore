@@ -47,6 +47,7 @@ tests/*.log
 *.out
 coverage.txt
 coverage.html
+test_override.tf
 
 # Security scan results
 results.sarif
