@@ -232,6 +232,18 @@ vars := map[string]interface{}{
 }
 ```
 
+### Terraform Destroy Hangs on Object Lock Buckets
+
+**Problem:** `terraform destroy` hangs when destroying S3 buckets with Object Lock enabled in LocalStack.
+
+**Solution:** Skip `terraform destroy` for LocalStack tests. The LocalStack container cleanup automatically handles resource disposal:
+```go
+// Don't use: defer terraform.Destroy(t, terraformOptions)
+// LocalStack container cleanup will handle disposal
+```
+
+For GitHub Actions smoke tests, the workflow skips destroy - the LocalStack service container is automatically torn down at job completion.
+
 ### If Tests Get Stuck
 
 ```bash

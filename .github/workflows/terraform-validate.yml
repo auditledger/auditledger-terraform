@@ -173,8 +173,11 @@ jobs:
           # Validate outputs
           terraform output -json
 
-          # Cleanup
-          terraform destroy -auto-approve
+          echo "✅ Smoke test passed - S3 bucket with Object Lock created successfully"
+
+          # Note: Skip terraform destroy for LocalStack
+          # LocalStack has issues destroying Object Lock buckets, and the container
+          # will be torn down anyway at the end of the job
           rm -f localstack_override.tf
 
       - name: Setup Go

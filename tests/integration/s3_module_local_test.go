@@ -41,7 +41,8 @@ func TestS3ModuleLocalStack(t *testing.T) {
 	// Copy LocalStack provider override into module directory (with unique name)
 	overridePath := copyLocalStackOverride(t, terraformOptions.TerraformDir)
 	defer removeLocalStackOverride(overridePath)
-	defer terraform.Destroy(t, terraformOptions)
+	// Note: Skip terraform destroy for LocalStack - it hangs on Object Lock buckets
+	// LocalStack container cleanup handles resource disposal
 
 	// Deploy
 	terraform.InitAndApply(t, terraformOptions)
@@ -82,7 +83,8 @@ func TestS3ModuleLocalStackBasicOperations(t *testing.T) {
 	// Copy LocalStack provider override into module directory (with unique name)
 	overridePath := copyLocalStackOverride(t, terraformOptions.TerraformDir)
 	defer removeLocalStackOverride(overridePath)
-	defer terraform.Destroy(t, terraformOptions)
+	// Note: Skip terraform destroy for LocalStack - it hangs on Object Lock buckets
+	// LocalStack container cleanup handles resource disposal
 	terraform.InitAndApply(t, terraformOptions)
 
 	// Validate outputs exist
