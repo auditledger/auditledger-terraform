@@ -99,6 +99,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "audit_logs" {
     id     = "transition-to-ia"
     status = "Enabled"
 
+    filter {}
+
     transition {
       days          = 90
       storage_class = "STANDARD_IA"
@@ -118,6 +120,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "audit_logs" {
   rule {
     id     = "expire-old-versions"
     status = "Enabled"
+
+    filter {}
 
     noncurrent_version_expiration {
       noncurrent_days = var.retention_days

@@ -25,7 +25,9 @@ func TestEC2Example(t *testing.T) {
 			"allowed_cidr_blocks": []string{"10.0.0.0/8"},
 		},
 		EnvVars: map[string]string{
-			"AWS_DEFAULT_REGION": "us-east-1",
+			"AWS_DEFAULT_REGION":    "us-east-1",
+			"AWS_ACCESS_KEY_ID":     "test",
+			"AWS_SECRET_ACCESS_KEY": "test",
 		},
 	}
 
@@ -56,7 +58,9 @@ func TestECSExample(t *testing.T) {
 			"app_image":   "nginx:latest", // Placeholder image
 		},
 		EnvVars: map[string]string{
-			"AWS_DEFAULT_REGION": "us-east-1",
+			"AWS_DEFAULT_REGION":    "us-east-1",
+			"AWS_ACCESS_KEY_ID":     "test",
+			"AWS_SECRET_ACCESS_KEY": "test",
 		},
 	}
 
@@ -89,7 +93,9 @@ func TestLambdaExample(t *testing.T) {
 			"create_api_gateway": false,
 		},
 		EnvVars: map[string]string{
-			"AWS_DEFAULT_REGION": "us-east-1",
+			"AWS_DEFAULT_REGION":    "us-east-1",
+			"AWS_ACCESS_KEY_ID":     "test",
+			"AWS_SECRET_ACCESS_KEY": "test",
 		},
 	}
 
@@ -120,6 +126,13 @@ func TestAzureAppServiceExample(t *testing.T) {
 			"resource_group_name":  "test-rg",
 			"storage_account_name": "teststorage123",
 			"organization_id":      "test-org",
+		},
+		EnvVars: map[string]string{
+			"ARM_SUBSCRIPTION_ID":            "00000000-0000-0000-0000-000000000000",
+			"ARM_TENANT_ID":                  "00000000-0000-0000-0000-000000000000",
+			"ARM_CLIENT_ID":                  "00000000-0000-0000-0000-000000000000",
+			"ARM_CLIENT_SECRET":              "test",
+			"ARM_SKIP_PROVIDER_REGISTRATION": "true",
 		},
 	}
 
