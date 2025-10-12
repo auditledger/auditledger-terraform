@@ -1,12 +1,12 @@
 #!/bin/bash
-# Setup script for local testing with LocalStack and Azurite
+# Setup script for local testing with LocalStack
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-echo "🚀 Setting up local testing environment for AuditLedger Terraform..."
+echo "🚀 Setting up local testing environment (LocalStack) for AuditLedger Terraform..."
 echo ""
 
 # Colors for output
@@ -42,53 +42,16 @@ else
     echo -e "${GREEN}✅ AWS CLI installed${NC}"
 fi
 
-if ! command -v az &> /dev/null; then
-    echo -e "${YELLOW}⚠️  Azure CLI not found. Installing is recommended for Azure testing.${NC}"
-else
-    echo -e "${GREEN}✅ Azure CLI installed${NC}"
-fi
-
 echo ""
 
 # Create necessary directories
 echo "📁 Creating directories..."
 mkdir -p "$PROJECT_ROOT/.localstack"
-mkdir -p "$PROJECT_ROOT/.azurite"
-mkdir -p "$PROJECT_ROOT/.azurite-logs"
 echo -e "${GREEN}✅ Directories created${NC}"
-
-# Add to .gitignore if not already there
-echo "📝 Updating .gitignore..."
-if [ -f "$PROJECT_ROOT/.gitignore" ]; then
-    grep -qxF '.localstack/' "$PROJECT_ROOT/.gitignore" || echo '.localstack/' >> "$PROJECT_ROOT/.gitignore"
-    grep -qxF '.azurite/' "$PROJECT_ROOT/.gitignore" || echo '.azurite/' >> "$PROJECT_ROOT/.gitignore"
-    grep -qxF '.azurite-logs/' "$PROJECT_ROOT/.gitignore" || echo '.azurite-logs/' >> "$PROJECT_ROOT/.gitignore"
-else
-    cat > "$PROJECT_ROOT/.gitignore" << 'EOF'
-# Terraform
-.terraform/
-*.tfstate
-*.tfstate.*
-.terraform.lock.hcl
-override.tf
-override.tf.json
-*_override.tf
-*_override.tf.json
-
-# Local testing
-.localstack/
-.azurite/
-.azurite-logs/
-
-# OS
-.DS_Store
-EOF
-fi
-echo -e "${GREEN}✅ .gitignore updated${NC}"
 
 # Start services
 echo ""
-echo "🐳 Starting LocalStack and Azurite..."
+echo "🐳 Starting LocalStack..."
 cd "$PROJECT_ROOT"
 
 if docker compose version &> /dev/null; then
@@ -115,22 +78,8 @@ for i in {1..30}; do
     sleep 2
 done
 
-# Check Azurite
-echo "Checking Azurite..."
-for i in {1..30}; do
-    if curl -s http://localhost:10000/ &> /dev/null; then
-        echo -e "${GREEN}✅ Azurite is ready${NC}"
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        echo -e "${RED}❌ Azurite failed to start${NC}"
-        exit 1
-    fi
-    sleep 2
-done
-
 echo ""
-echo -e "${GREEN}🎉 Local testing environment is ready!${NC}"
+echo -e "${GREEN}🎉 LocalStack is ready!${NC}"
 echo ""
 
 # Create .env file if it doesn't exist
@@ -138,12 +87,6 @@ if [ ! -f "$PROJECT_ROOT/.env.localstack" ]; then
     echo "📝 Creating .env.localstack from example..."
     cp "$PROJECT_ROOT/env.localstack.example" "$PROJECT_ROOT/.env.localstack"
     echo -e "${GREEN}✅ Created .env.localstack${NC}"
-fi
-
-if [ ! -f "$PROJECT_ROOT/.env.azurite" ]; then
-    echo "📝 Creating .env.azurite from example..."
-    cp "$PROJECT_ROOT/env.azurite.example" "$PROJECT_ROOT/.env.azurite"
-    echo -e "${GREEN}✅ Created .env.azurite${NC}"
 fi
 
 echo ""

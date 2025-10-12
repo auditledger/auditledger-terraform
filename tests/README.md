@@ -6,7 +6,7 @@ Automated tests for AuditLedger Terraform modules with **zero-cost local testing
 
 ```bash
 # Setup (one-time)
-make local-up          # Starts LocalStack/Azurite, creates .env files
+make local-up          # Starts LocalStack, creates .env files
 cd tests && cp go.mod.example go.mod && go mod download
 
 # Run tests (uses .env.localstack automatically)
@@ -63,10 +63,11 @@ tests/
 ### Makefile Commands (Recommended)
 
 ```bash
-make local-up      # Start LocalStack/Azurite
-make local-test    # Run all tests (auto-loads .env)
-make local-shell   # Open shell with env loaded
-make local-down    # Stop services
+make local-up         # Start LocalStack
+make local-test       # Run AWS local tests
+make local-test-aws   # Run AWS tests with LocalStack
+make local-shell      # Open shell with env loaded
+make local-down       # Stop LocalStack
 ```
 
 ### Manual Commands
@@ -83,7 +84,14 @@ source .env.localstack
 cd tests/smoke && go test -v              # Fastest
 cd tests/contract && go test -v           # Interface validation
 cd tests/examples && go test -v           # Example validation
-cd tests/integration && go test -v -run TestS3ModuleLocalStack  # Full tests
+
+# Run local integration tests (AWS only - Azure requires real cloud)
+./scripts/test-localstack.sh              # AWS with LocalStack
+
+# Or manually:
+cd tests/integration && go test -v -run TestS3ModuleLocalStack   # S3 with LocalStack
+
+# Note: Azure local testing not supported (see "Local Testing Limitations" below)
 
 # Cleanup
 docker compose down

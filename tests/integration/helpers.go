@@ -36,33 +36,20 @@ func GetAWSConfig(t *testing.T, terraformDir string, vars map[string]interface{}
 	}
 }
 
-// GetAzureConfig returns Terraform options configured for either Azurite or real Azure
+// GetAzureConfig returns Terraform options configured for real Azure
+// Note: Azurite local testing not supported - azurerm provider requires real Azure AD
 func GetAzureConfig(t *testing.T, terraformDir string, vars map[string]interface{}) *terraform.Options {
-	useAzurite := os.Getenv("USE_AZURITE") == "true"
-
-	envVars := make(map[string]string)
-
-	if useAzurite {
-		// Configure for Azurite
-		envVars["AZURE_STORAGE_CONNECTION_STRING"] = "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
-	}
-
 	return &terraform.Options{
 		TerraformDir:    terraformDir,
 		TerraformBinary: "terraform",
 		Vars:            vars,
-		EnvVars:         envVars,
+		EnvVars:         make(map[string]string),
 	}
 }
 
 // IsLocalStack returns true if tests should run against LocalStack
 func IsLocalStack() bool {
 	return os.Getenv("USE_LOCALSTACK") == "true"
-}
-
-// IsAzurite returns true if tests should run against Azurite
-func IsAzurite() bool {
-	return os.Getenv("USE_AZURITE") == "true"
 }
 
 // GetTestRoleArn returns a test role ARN (different for LocalStack vs AWS)
