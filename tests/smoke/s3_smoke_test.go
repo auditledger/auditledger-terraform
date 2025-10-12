@@ -36,7 +36,7 @@ provider "aws" {
 // TestS3ModuleSmoke is a fast smoke test that validates basic module functionality
 // This should run quickly in LocalStack on every PR
 func TestS3ModuleSmoke(t *testing.T) {
-	t.Parallel()
+	// Note: Don't run in parallel - all smoke tests share the same module directory
 
 	terraformDir := "../../modules/auditledger-s3"
 	createTestProviderOverride(t, terraformDir)
@@ -72,7 +72,7 @@ func TestS3ModuleSmoke(t *testing.T) {
 
 // TestS3ModuleMinimumVariables ensures module works with minimal configuration
 func TestS3ModuleMinimumVariables(t *testing.T) {
-	t.Parallel()
+	// Note: Don't run in parallel - all smoke tests share the same module directory
 
 	terraformDir := "../../modules/auditledger-s3"
 	createTestProviderOverride(t, terraformDir)
@@ -104,7 +104,7 @@ func TestS3ModuleMinimumVariables(t *testing.T) {
 
 // TestS3ModuleRequiredVariables ensures required variables are enforced
 func TestS3ModuleRequiredVariables(t *testing.T) {
-	t.Parallel()
+	// Note: Don't run in parallel - all smoke tests share the same module directory
 
 	terraformDir := "../../modules/auditledger-s3"
 	createTestProviderOverride(t, terraformDir)
