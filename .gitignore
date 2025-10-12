@@ -22,6 +22,7 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+localstack_override*.tf
 
 # Ignore transient lock info files created by terraform apply
 .terraform.tfstate.lock.info
@@ -70,3 +71,12 @@ vendor/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Environment files (generated from examples)
+.env.localstack
+.env.azurite
+
+# Local testing with LocalStack and Azurite
+.localstack/
+.azurite/
+.azurite-logs/

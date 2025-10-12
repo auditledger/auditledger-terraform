@@ -1,183 +1,384 @@
 # Terraform Testing Guide
 
-This directory contains automated tests for the AuditLedger Terraform modules.
+Automated tests for AuditLedger Terraform modules with **zero-cost local testing** using LocalStack and Azurite.
+
+## Quick Start
+
+```bash
+# Setup (one-time)
+make local-up          # Starts LocalStack/Azurite, creates .env files
+cd tests && cp go.mod.example go.mod && go mod download
+
+# Run tests (uses .env.localstack automatically)
+make local-test        # Runs all LocalStack tests
+
+# Cleanup
+make local-down
+```
 
 ## Test Structure
 
 ```
 tests/
-├── integration/          # Terratest integration tests
-│   ├── s3_module_test.go
-│   ├── azure_blob_test.go
-│   └── common_test.go
-├── contract/            # Interface/contract tests
+├── smoke/                         # Fast plan-only tests (2-5 min)
+│   └── s3_smoke_test.go
+├── contract/                      # Interface validation (5 min)
 │   └── module_interface_test.go
-├── go.mod               # Go dependencies
-└── README.md           # This file
+├── examples/                      # Example validation (5-10 min)
+│   └── ec2_example_test.go
+├── integration/                   # Full integration tests (10-30 min)
+│   ├── s3_module_local_test.go   # LocalStack (free)
+│   ├── s3_module_test.go         # Real AWS (disabled)
+│   └── helpers.go                # Shared utilities
+├── go.mod.example                # Go dependencies
+└── README.md                     # This file
 ```
 
-## Prerequisites
+## Testing Tiers
 
-- Go 1.21+
-- Terraform 1.5+
-- AWS credentials (for S3 tests)
-- Azure credentials (for Azure Blob tests)
-
-## Installation
-
-```bash
-cd tests
-go mod init github.com/auditledger/auditledger-terraform/tests
-go get github.com/gruntwork-io/terratest/modules/terraform@latest
-go get github.com/gruntwork-io/terratest/modules/aws@latest
-go get github.com/gruntwork-io/terratest/modules/azure@latest
-go get github.com/stretchr/testify/assert@latest
+```
+┌─────────────────┐
+│ Real Cloud      │  ← Manual only ($$$, 30m) - DISABLED
+│ (Optional)      │
+└─────────────────┘
+     ▲
+┌─────────────────┐
+│ LocalStack      │  ← Every PR (Free, 10m)
+│ Integration     │    Full deployment testing
+└─────────────────┘
+     ▲
+┌─────────────────┐
+│ Contract/Smoke  │  ← Every PR (Free, 5m)
+│ Tests           │    Interface & example validation
+└─────────────────┘
+     ▲
+┌───────────────────┐
+│ Static Analysis   │  ← Every commit (Free, 2m)
+│ fmt/validate/tfsec│  Pre-commit hooks
+└───────────────────┘
 ```
 
 ## Running Tests
 
-### Run all tests
+### Makefile Commands (Recommended)
+
 ```bash
-cd tests/integration
-go test -v -timeout 30m
+make local-up      # Start LocalStack/Azurite
+make local-test    # Run all tests (auto-loads .env)
+make local-shell   # Open shell with env loaded
+make local-down    # Stop services
 ```
 
-### Run specific test
+### Manual Commands
+
 ```bash
-go test -v -timeout 30m -run TestS3Module
+# Start services
+docker compose up -d
+
+# Load environment
+cp env.localstack.example .env.localstack  # One-time
+source .env.localstack
+
+# Run specific test types
+cd tests/smoke && go test -v              # Fastest
+cd tests/contract && go test -v           # Interface validation
+cd tests/examples && go test -v           # Example validation
+cd tests/integration && go test -v -run TestS3ModuleLocalStack  # Full tests
+
+# Cleanup
+docker compose down
 ```
 
-### Run tests in parallel
+### Test by Purpose
+
+| Purpose | Command | Duration | Cost |
+|---------|---------|----------|------|
+| Quick validation | `cd tests/smoke && go test -v` | 2 min | Free |
+| Interface check | `cd tests/contract && go test -v` | 5 min | Free |
+| Example sync | `cd tests/examples && go test -v` | 5 min | Free |
+| Full local test | `make local-test` | 10 min | Free |
+| Real cloud (disabled) | Manual only | 30 min | $1-5 |
+
+## Environment Configuration
+
+### Local Development (.env files)
+
+**Setup once:**
 ```bash
-go test -v -timeout 30m -parallel 4
+cp env.localstack.example .env.localstack
+cp env.azurite.example .env.azurite
 ```
 
-### Run with verbose Terraform output
+**Load when testing:**
 ```bash
-TF_LOG=DEBUG go test -v -timeout 30m
+source .env.localstack
 ```
 
-## Test Strategy
+**Or use scripts (auto-loads):**
+```bash
+./scripts/test-localstack.sh
+# or
+make local-test
+```
 
-### 1. Static Analysis (Pre-commit)
-- `terraform fmt -check`
-- `terraform validate`
-- `tfsec` (security scanning)
-- `checkov` (compliance checks)
-- `tflint` (best practices)
+### GitHub Actions (YAML)
 
-### 2. Unit Tests (Fast, no cloud resources)
-- Variable validation
-- Input/output contract verification
-- Logic testing with `terraform plan`
+Environment variables are set directly in workflow files:
 
-### 3. Integration Tests (Slow, creates real resources)
-- Deploy module to real cloud
-- Validate resources created correctly
-- Test outputs and behavior
-- Clean up resources
+```yaml
+# .github/workflows/terraform-validate.yml
+env:
+  AWS_ENDPOINT_URL: http://localhost:4566
+  AWS_ACCESS_KEY_ID: test
+  # ... etc
+```
 
-## Writing Tests
+No .env files needed in CI!
 
-### Basic Test Pattern
+## Available .env Files
 
+| File | Purpose | Committed? |
+|------|---------|------------|
+| `env.localstack.example` | Template for LocalStack config | ✅ Yes |
+| `env.azurite.example` | Template for Azurite config | ✅ Yes |
+| `.env.localstack` | Your local copy | ❌ No (gitignored) |
+| `.env.azurite` | Your local copy | ❌ No (gitignored) |
+
+## LocalStack Configuration
+
+### Supported AWS Services
+
+- ✅ S3 - Buckets, Object Lock, versioning
+- ✅ IAM - Policies, roles
+- ✅ KMS - Encryption keys
+- ✅ CloudWatch - Log groups
+- ✅ Lambda - Python functions
+- ✅ API Gateway - HTTP APIs
+
+### Limitations
+
+⚠️ **Not fully supported or slow in LocalStack:**
+- S3 Object Lock COMPLIANCE mode (use GOVERNANCE)
+- S3 Lifecycle configurations (can hang - disable with `enable_lifecycle_rules=false`)
+- Cross-region replication
+- Some advanced IAM conditions
+
+**Tip:** Disable lifecycle rules in LocalStack tests for faster execution.
+
+**Use LocalStack for rapid iteration, real AWS for final validation.**
+
+### Verify LocalStack is Running
+
+```bash
+curl http://localhost:4566/_localstack/health
+# Should show: "s3": "available"
+```
+
+## Azurite Configuration
+
+### Supported Azure Services
+
+- ✅ Blob Storage - Containers, blobs
+- ✅ Versioning - Blob versioning
+- ⚠️ Limited - Change feed, immutability policies (emulated)
+
+### Connection Info
+
+```bash
+# Default Azurite credentials
+Account: devstoreaccount1
+Key: Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==
+Endpoint: http://127.0.0.1:10000/devstoreaccount1
+```
+
+## Prerequisites
+
+### Required
+
+```bash
+# Install Go
+brew install go
+go version  # Should be 1.21+
+
+# Install Terraform
+brew install terraform
+terraform version  # Should be 1.5.0+
+
+# Install Docker
+brew install --cask docker
+# Start Docker Desktop
+```
+
+### Optional
+
+```bash
+# AWS CLI (for real cloud tests)
+brew install awscli
+
+# Azure CLI (for Azure tests)
+brew install azure-cli
+```
+
+## LocalStack Known Issues
+
+### Tests Hang on Lifecycle Configuration
+
+**Problem:** `aws_s3_bucket_lifecycle_configuration` can hang in LocalStack.
+
+**Solution:** Disable lifecycle rules in LocalStack tests:
 ```go
-func TestModuleName(t *testing.T) {
-    t.Parallel()
-
-    // 1. Setup
-    terraformOptions := &terraform.Options{
-        TerraformDir: "../../modules/module-name",
-        Vars: map[string]interface{}{
-            "variable_name": "test-value",
-        },
-    }
-
-    // 2. Cleanup (deferred)
-    defer terraform.Destroy(t, terraformOptions)
-
-    // 3. Deploy
-    terraform.InitAndApply(t, terraformOptions)
-
-    // 4. Validate
-    output := terraform.Output(t, terraformOptions, "output_name")
-    assert.NotEmpty(t, output)
+vars := map[string]interface{}{
+    "enable_lifecycle_rules": false,  // ← Prevents hanging
 }
 ```
 
-## CI/CD Integration
+### If Tests Get Stuck
 
-Integration tests run:
-- **Manually** via GitHub Actions workflow dispatch
-- **Scheduled** nightly builds
-- **NOT on every PR** (too slow and expensive)
-
-## Cost Management
-
-Integration tests create real cloud resources:
-- Tests run in isolated accounts/subscriptions
-- Resources are tagged: `Environment=Test`, `ManagedBy=Terratest`
-- Cleanup happens automatically via `defer terraform.Destroy()`
-- Backup cleanup jobs run daily to catch any orphaned resources
-
-## Best Practices
-
-1. **Always use `t.Parallel()`** for independent tests
-2. **Always defer cleanup** to avoid orphaned resources
-3. **Use unique names** with random suffixes to avoid conflicts
-4. **Test one thing at a time** - focused test cases
-5. **Clean up even on failure** - use `defer`
-6. **Set reasonable timeouts** - 30m is typical
-7. **Don't test AWS/Azure APIs** - test your module logic only
-
-## Example: Testing S3 Module
-
-```go
-func TestS3ModuleVersioning(t *testing.T) {
-    t.Parallel()
-
-    bucketName := fmt.Sprintf("test-audit-%s", random.UniqueId())
-    awsRegion := "us-east-1"
-
-    terraformOptions := &terraform.Options{
-        TerraformDir: "../../modules/auditledger-s3",
-        Vars: map[string]interface{}{
-            "bucket_name": bucketName,
-            "enable_versioning": true,
-        },
-    }
-
-    defer terraform.Destroy(t, terraformOptions)
-    terraform.InitAndApply(t, terraformOptions)
-
-    // Validate versioning is enabled
-    versioning := aws.GetS3BucketVersioning(t, awsRegion, bucketName)
-    assert.Equal(t, "Enabled", versioning)
-}
+```bash
+# Press Ctrl+C to stop
+# Or kill the process
+ps aux | grep "go test" | awk '{print $2}' | xargs kill
 ```
 
 ## Troubleshooting
 
-### Tests hang or timeout
-- Check AWS/Azure credentials
-- Increase timeout: `-timeout 60m`
-- Check for resource quotas
+### LocalStack not responding
 
-### Resources not cleaned up
 ```bash
-# AWS
-aws s3 ls | grep test-audit | awk '{print $3}' | xargs -I {} aws s3 rb s3://{} --force
+# Check status
+docker ps | grep localstack
 
-# Azure
-az resource list --tag Environment=Test --query "[].id" -o tsv | xargs -I {} az resource delete --ids {}
+# View logs
+docker compose logs localstack
+
+# Restart
+docker compose restart localstack
 ```
 
-### Permission errors
-- Ensure test role has permissions to create/destroy resources
-- Check IAM/RBAC policies
+### Tests fail with "connection refused"
 
-## Resources
+**Problem:** LocalStack not started or wrong endpoint.
 
-- [Terratest Documentation](https://terratest.gruntwork.io/)
-- [Go Testing Best Practices](https://golang.org/doc/code.html#Testing)
-- [Terraform Testing Best Practices](https://developer.hashicorp.com/terraform/language/modules)
+**Solution:**
+```bash
+# Check LocalStack is running
+curl http://localhost:4566/_localstack/health
+
+# Verify environment
+echo $AWS_ENDPOINT_URL
+# Should be: http://localhost:4566
+```
+
+### "go.mod" not found
+
+```bash
+cd tests
+cp go.mod.example go.mod
+go mod download
+```
+
+### Environment variables not loaded
+
+```bash
+# Make sure you sourced the file
+source .env.localstack
+
+# Verify
+env | grep AWS_ENDPOINT
+# Should show: AWS_ENDPOINT_URL=http://localhost:4566
+```
+
+## Cost Comparison
+
+| Test Method | Duration | Cost | When to Use |
+|-------------|----------|------|-------------|
+| LocalStack tests | 10 min | **$0** | Daily development ⭐ |
+| Real cloud tests | 30 min | $1-5 | Pre-release only |
+
+**Recommendation:** Use LocalStack for 95% of testing!
+
+## CI/CD Workflows
+
+### On Every PR (Automatic, Free):
+
+1. **Static Analysis** (2 min)
+   - terraform fmt, validate
+   - tfsec, tflint
+
+2. **Contract Tests** (5 min)
+   - Module interface validation
+   - Required files check
+
+3. **Smoke Tests** (5 min)
+   - LocalStack deployment test
+   - Go smoke tests
+
+**Total:** ~12 minutes, $0 cost
+
+### Manual Only (Disabled):
+
+**Real Cloud Integration Tests**
+- Requires GitHub secrets configured
+- See `.plans/REAL_CLOUD_TESTING_SETUP.md`
+
+## Writing Tests
+
+### Smoke Test (Plan Only)
+
+```go
+func TestModuleSmoke(t *testing.T) {
+    terraformOptions := &terraform.Options{
+        TerraformDir: "../../modules/module-name",
+        Vars: map[string]interface{}{"bucket_name": "test"},
+    }
+
+    terraform.Init(t, terraformOptions)
+    planOutput := terraform.Plan(t, terraformOptions)
+    assert.Contains(t, planOutput, "expected_resource")
+}
+```
+
+### LocalStack Test (With Deployment)
+
+```go
+func TestModuleLocalStack(t *testing.T) {
+    if !IsLocalStack() {
+        t.Skip("Set USE_LOCALSTACK=true to run")
+    }
+
+    vars := map[string]interface{}{
+        "bucket_name": "test-bucket",
+        "retention_days": 365,
+        "object_lock_mode": "GOVERNANCE",
+        "auditledger_role_arns": []string{GetTestRoleArn()},
+    }
+
+    opts := GetAWSConfig(t, "../../modules/module-name", vars)
+    defer terraform.Destroy(t, opts)
+    terraform.InitAndApply(t, opts)
+
+    // Validate
+    output := terraform.Output(t, opts, "bucket_id")
+    assert.NotEmpty(t, output)
+}
+```
+
+## Additional Resources
+
+- **Beginner Guide:** `.plans/integration_testing.md`
+- **Testing Best Practices:** `.plans/TESTING.md`
+- **Real Cloud Setup:** `.plans/REAL_CLOUD_TESTING_SETUP.md` (when ready)
+
+## Summary
+
+**For daily development:**
+- ✅ Use LocalStack (free, fast)
+- ✅ Use .env files locally
+- ✅ Use Makefile commands
+
+**For production validation:**
+- ⚠️ Real cloud tests (manual trigger only)
+- 💰 Costs money, disabled by default
+- 📚 See setup guide when ready
+
+**Zero-cost testing for 95% of your work!** 🎉
