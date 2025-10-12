@@ -33,12 +33,25 @@ provider "aws" {
 	})
 }
 
+// cleanTerraformState removes stale Terraform state and cache files
+func cleanTerraformState(t *testing.T, terraformDir string) {
+	// Remove .terraform directory
+	terraformCache := filepath.Join(terraformDir, ".terraform")
+	os.RemoveAll(terraformCache)
+
+	// Remove state files
+	os.Remove(filepath.Join(terraformDir, "terraform.tfstate"))
+	os.Remove(filepath.Join(terraformDir, "terraform.tfstate.backup"))
+	os.Remove(filepath.Join(terraformDir, ".terraform.lock.hcl"))
+}
+
 // TestS3ModuleSmoke is a fast smoke test that validates basic module functionality
 // This should run quickly in LocalStack on every PR
 func TestS3ModuleSmoke(t *testing.T) {
 	// Note: Don't run in parallel - all smoke tests share the same module directory
 
 	terraformDir := "../../modules/auditledger-s3"
+	cleanTerraformState(t, terraformDir)
 	createTestProviderOverride(t, terraformDir)
 
 	bucketName := fmt.Sprintf("smoke-test-%s", strings.ToLower(random.UniqueId()))
@@ -75,6 +88,7 @@ func TestS3ModuleMinimumVariables(t *testing.T) {
 	// Note: Don't run in parallel - all smoke tests share the same module directory
 
 	terraformDir := "../../modules/auditledger-s3"
+	cleanTerraformState(t, terraformDir)
 	createTestProviderOverride(t, terraformDir)
 
 	testRoleArn := "arn:aws:iam::000000000000:role/test-role"
@@ -107,6 +121,7 @@ func TestS3ModuleRequiredVariables(t *testing.T) {
 	// Note: Don't run in parallel - all smoke tests share the same module directory
 
 	terraformDir := "../../modules/auditledger-s3"
+	cleanTerraformState(t, terraformDir)
 	createTestProviderOverride(t, terraformDir)
 
 	terraformOptions := &terraform.Options{

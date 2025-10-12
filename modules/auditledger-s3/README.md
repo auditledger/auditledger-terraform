@@ -268,7 +268,7 @@ README.md updated successfully
 
 | Name | Version |
 |------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | 6.15.0 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | 6.16.0 |
 
 ## Modules
 
